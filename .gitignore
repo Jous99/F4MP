@@ -1,0 +1,41 @@
+# --- Visual Studio ---
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.aps
+*.pdb
+*.obj
+*.log
+*.tlog
+*.lastbuildstate
+*.idb
+*.iobj
+*.ipdb
+*.ipch
+*.ncb
+*.sdf
+*.suo
+*.vsp
+*.vspx
+*.orig
+*.db
+*.opendb
+
+# --- Archivos de compilación ---
+*.exe
+*.dll
+*.lib
+*.exp
+*.ilk
+
+# --- Archivos de sistema ---
+.DS_Store
+Thumbs.db
+
+# --- F4MP Específico ---
+# Ignorar logs que genera el mod al testearlo
+F4MP.log
+F4MP_Client.log
