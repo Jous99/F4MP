@@ -1,33 +1,25 @@
-# F4MP | Fallout 4 Multiplayer Project
+# F4MP - Fallout 4 Multiplayer Project
 
-F4MP es un ambicioso proyecto de investigación y desarrollo que busca implementar capacidades multijugador en el motor de **Fallout 4**. Este proyecto nace con un enfoque educativo, diseñado para profundizar en la ingeniería inversa, la sincronización de estados en redes UDP y la inyección de código en sistemas cerrados.
+**F4MP** es un proyecto que busca crear un mod multijugador para **Fallout 4**. El objetivo es usar ingeniería inversa y protocolos de red para lograr la sincronización entre varios jugadores dentro del mismo mundo. 
 
----
-
-## 📜 Créditos y Referencias
-
-Este proyecto no sería posible sin el trabajo previo de la comunidad de modding. F4MP utiliza como base de referencia técnica el proyecto **Tilted Evolution** desarrollado por el equipo de **Tilted Phoques**.
-
-* **Proyecto Original:** [Tilted Online / Evolution](https://github.com/tiltedphoques/TiltedEvolution)
-* **Agradecimientos:** Agradecemos al equipo de Tilted Phoques por abrir su código a la comunidad, permitiendo que nuevos desarrolladores aprendamos de su avanzada arquitectura de sincronización.
-
-> **Nota:** F4MP es un proyecto independiente y no está afiliado formalmente con el equipo de Tilted Phoques.
+Básicamente, es un reto técnico para ver cómo podemos adaptar un juego diseñado originalmente para una sola persona y hacerlo funcionar de forma estable en línea.
 
 ---
 
-## 📅 Estado del Proyecto y Roadmap
+## 🚀 Objetivo del Proyecto
+El proyecto se centra en investigar y desarrollar las herramientas necesarias para permitir una experiencia multijugador funcional, centrándose en:
+* Sincronización de personajes y movimientos.
+* Comunicación de datos en tiempo real entre clientes.
+* Estabilidad del motor en entornos de red.
 
-Para ver el progreso actual, las tareas pendientes y los hitos del desarrollo, por favor visita nuestra hoja de ruta oficial en el siguiente enlace:
+## 🛠️ Tecnologías y Conceptos
+Para lograr esto, el desarrollo se apoya en:
+* **Ingeniería Inversa:** Para entender cómo el juego gestiona los datos internamente.
+* **Networking:** Implementación de protocolos para el intercambio de información.
+* **Inyección de Código:** Para añadir las nuevas funciones multijugador al ejecutable original.
 
-👉 **[Ver el Roadmap](https://f4mp.joustech.space/roadmap.html)**
+## ⚠️ Estado actual
+Este es un proyecto en desarrollo y con fines de investigación. No es un producto final y está orientado a desarrolladores o entusiastas que quieran explorar las posibilidades técnicas de Fallout 4.
 
 ---
-
-## 🚀 Cómo contribuir o testear
-
-Actualmente, el proyecto se encuentra en una etapa de **Pre-Alpha Técnica (Investigación)**. 
-
-Si deseas compilar el código actual:
-1. Clona el repositorio: `git clone --recursive https://github.com/Jous99/F4MP.git`
-2. Abre la solución de Visual Studio 2022 en `F4MP_Source`.
-3. Compila en modo **Release x64**.
+*Desarrollado con fines educativos y de investigación sobre el motor Creation Engine.*
