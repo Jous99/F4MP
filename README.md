@@ -9,7 +9,7 @@ Básicamente, es un reto técnico para ver cómo podemos adaptar un juego diseñ
 ## 🗺️ Hoja de Ruta (Roadmap)
 Puedes seguir el progreso detallado del desarrollo, las tareas actuales y los próximos objetivos en nuestro sitio oficial:
 
-👉 **[Ver el Roadmap del proyecto](https://f4mp.joustech.space/roadmap.html)**
+👉 **[Ver el Roadmap del proyecto](https://f4mp.joustech.space/roadmap.php)**
 
 ---
 
