@@ -1,39 +1,36 @@
-#include <windows.h>
-#include "../Base/Logger.h"
+#include "f4se/PluginAPI.h"
+#include <shlobj.h>
 
-// Forzamos que estas funciones sean visibles para F4SE
+// Información del Mod
+IDebugLog gLog;
+PluginHandle g_pluginHandle = kPluginHandle_Invalid;
+F4SEMessagingInterface* g_messaging = NULL;
+
 extern "C" {
-    // 1. Identificación del plugin
-    __declspec(dllexport) bool F4SEPlugin_Query(const void* f4se, void* info) {
-        Logger::Log("F4MP: Query recibido.");
+    // Esta función la llama F4SE al arrancar para ver si el mod es compatible
+    bool F4SEPlugin_Query(const F4SEInterface* f4se, PluginInfo* info) {
+        gLog.OpenRelative(CSIDL_MYDOCUMENTS, "\\My Games\\Fallout4\\F4SE\\F4MP_Project.log");
+
+        // Datos del mod
+        info->infoVersion = PluginInfo::kInfoVersion;
+        info->name = "F4MP_Project";
+        info->version = 1;
+
+        if (f4se->runtimeVersion != RUNTIME_VERSION_1_10_163) {
+            _MESSAGE("ERROR: Version de juego no compatible.");
+            return false;
+        }
+
         return true;
     }
 
-    // 2. Carga del plugin
-    __declspec(dllexport) bool F4SEPlugin_Load(const void* f4se) {
-        Logger::Log("F4MP: Cargando hilos...");
+    // Esta función se ejecuta cuando el mod se carga oficialmente
+    bool F4SEPlugin_Load(const F4SEInterface* f4se) {
+        _MESSAGE("F4MP: Protocolo de terminal cargado correctamente.");
         
-        // Creamos el hilo usando una función básica de Windows
-        CreateThread(NULL, 0, [](LPVOID) -> DWORD {
-            Logger::Log("F4MP: Hilo principal en ejecucion.");
-            
-            while (true) {
-                if (GetAsyncKeyState(VK_END) & 0x8000) break;
-                Sleep(100);
-            }
-            
-            Logger::Log("F4MP: Hilo cerrado.");
-            return 0;
-        }, NULL, 0, NULL);
-
+        g_pluginHandle = f4se->GetPluginHandle();
+        
+        // Aquí es donde en el futuro "engancharemos" los datos
         return true;
     }
-}
-
-// Punto de entrada de la DLL
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
-    if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
-        DisableThreadLibraryCalls(hModule);
-    }
-    return TRUE;
-}
+};
