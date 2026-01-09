@@ -27,6 +27,3 @@ Para lograr esto, el desarrollo se apoya en:
 
 ## ⚠️ Estado actual
 Este es un proyecto en desarrollo y con fines de investigación. No es un producto final y está orientado a desarrolladores o entusiastas que quieran explorar las posibilidades técnicas de Fallout 4.
-
----
-*Desarrollado con fines educativos y de investigación sobre el motor Creation Engine.*
