@@ -4,15 +4,6 @@ F4MP es un ambicioso proyecto de investigación y desarrollo que busca implement
 
 ---
 
-## 🏗️ Estructura del Laboratorio
-
-Para mantener un desarrollo limpio y organizado, el repositorio se divide en dos áreas principales:
-
-* **`F4MP_Source/`**: El núcleo del proyecto. Aquí se escribe desde cero todo el código original de F4MP, incluyendo el cliente (.DLL) y el servidor.
-* **`tiltedcode/`**: Carpeta de referencia técnica que contiene el código de **Tilted Evolution**. Se utiliza exclusivamente para estudio de arquitectura y consulta de protocolos.
-
----
-
 ## 📜 Créditos y Referencias
 
 Este proyecto no sería posible sin el trabajo previo de la comunidad de modding. F4MP utiliza como base de referencia técnica el proyecto **Tilted Evolution** desarrollado por el equipo de **Tilted Phoques**.
