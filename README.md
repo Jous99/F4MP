@@ -6,6 +6,13 @@ Básicamente, es un reto técnico para ver cómo podemos adaptar un juego diseñ
 
 ---
 
+## 🗺️ Hoja de Ruta (Roadmap)
+Puedes seguir el progreso detallado del desarrollo, las tareas actuales y los próximos objetivos en nuestro sitio oficial:
+
+👉 **[Ver el Roadmap del proyecto](https://f4mp.joustech.space/roadmap.html)**
+
+---
+
 ## 🚀 Objetivo del Proyecto
 El proyecto se centra en investigar y desarrollar las herramientas necesarias para permitir una experiencia multijugador funcional, centrándose en:
 * Sincronización de personajes y movimientos.
