@@ -19,7 +19,7 @@ Este proyecto no sería posible sin el trabajo previo de la comunidad de modding
 
 Para ver el progreso actual, las tareas pendientes y los hitos del desarrollo, por favor visita nuestra hoja de ruta oficial en el siguiente enlace:
 
-👉 **[Ver el Roadmap en GitHub Projects](https://github.com/users/Jous99/projects)**
+👉 **[Ver el Roadmap](https://f4mp.joustech.space/roadmap.html)**
 
 ---
 
