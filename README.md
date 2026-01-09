@@ -1,29 +1,38 @@
-# F4MP - Fallout 4 Multiplayer Project
+# Project F4MP - Fallout 4 Multiplayer Mod
 
-**F4MP** es un proyecto que busca crear un mod multijugador para **Fallout 4**. El objetivo es usar ingeniería inversa y protocolos de red para lograr la sincronización entre varios jugadores dentro del mismo mundo. 
-
-Básicamente, es un reto técnico para ver cómo podemos adaptar un juego diseñado originalmente para una sola persona y hacerlo funcionar de forma estable en línea.
-
----
-
-## 🗺️ Hoja de Ruta (Roadmap)
-Puedes seguir el progreso detallado del desarrollo, las tareas actuales y los próximos objetivos en nuestro sitio oficial:
-
-👉 **[Ver el Roadmap del proyecto](https://f4mp.joustech.space/roadmap.php)**
+<p align="center">
+  <img src="logo.png" alt="Project F4MP Logo" width="400">
+</p>
 
 ---
 
-## 🚀 Objetivo del Proyecto
-El proyecto se centra en investigar y desarrollar las herramientas necesarias para permitir una experiencia multijugador funcional, centrándose en:
-* Sincronización de personajes y movimientos.
-* Comunicación de datos en tiempo real entre clientes.
-* Estabilidad del motor en entornos de red.
+## ☢️ Sobre el Proyecto
+**Project F4MP** es una ambiciosa modificación para **Fallout 4** que introduce capacidades multijugador en el Commonwealth. Explora el yermo, completa misiones y sobrevive a los peligros post-apocalípticos junto a tus amigos.
 
-## 🛠️ Tecnologías y Conceptos
-Para lograr esto, el desarrollo se apoya en:
-* **Ingeniería Inversa:** Para entender cómo el juego gestiona los datos internamente.
-* **Networking:** Implementación de protocolos para el intercambio de información.
-* **Inyección de Código:** Para añadir las nuevas funciones multijugador al ejecutable original.
+## ✨ Características Principales
+* **Sincronización en Tiempo Real:** Jugadores, NPCs y clima sincronizados.
+* **Mundo Persistente:** Servidores dedicados para una experiencia continua.
+* **Compatibilidad:** Diseñado para trabajar con una amplia selección de mods de la comunidad.
+* **Estilo Pip-Boy:** Interfaz integrada fiel a la estética de Bethesda.
 
-## ⚠️ Estado actual
-Este es un proyecto en desarrollo y con fines de investigación. No es un producto final y está orientado a desarrolladores o entusiastas que quieran explorar las posibilidades técnicas de Fallout 4.
+## 🚀 Instalación
+1.  Descarga la última versión desde la sección de [Releases](../../releases).
+2.  Extrae el contenido en tu carpeta raíz de **Fallout 4**.
+3.  Ejecuta `F4MP_Launcher.exe`.
+4.  ¡Conéctate a un servidor y empieza a jugar!
+
+## 🛠️ Requisitos
+* Fallout 4 (Versión de Steam/GOG actualizada).
+* F4SE (Fallout 4 Script Extender).
+* Una conexión a internet estable.
+
+## 🤝 Contribuir
+¿Quieres ayudar a reconstruir el mundo? ¡Las contribuciones son bienvenidas!
+* Reporta bugs en el apartado de **Issues**.
+* Propón nuevas ideas en **Discussions**.
+* Revisa nuestro sitio web oficial: [f4mp.joustech.space](https://f4mp.joustech.space/)
+
+---
+<p align="center">
+  Hecho con ❤️ por la comunidad de Project F4MP.
+</p>
