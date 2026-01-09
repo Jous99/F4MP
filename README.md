@@ -31,6 +31,3 @@ Si deseas compilar el código actual:
 1. Clona el repositorio: `git clone --recursive https://github.com/Jous99/F4MP.git`
 2. Abre la solución de Visual Studio 2022 en `F4MP_Source`.
 3. Compila en modo **Release x64**.
-
----
-**Desarrollado por [Jous99] - 2026**
