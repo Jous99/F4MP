@@ -65,8 +65,3 @@ Si tienes conocimientos en **ingeniería inversa, C++, Assembly (x64)** o **prot
 ## ⚖️ Aviso Legal (Disclaimer)
 
 F4MP es un proyecto independiente y no está afiliado a Bethesda Softworks ni ZeniMax Media. El uso de este software es bajo tu propio riesgo y requiere una copia legal de Fallout 4. Todos los nombres y marcas registradas pertenecen a sus respectivos dueños.
-
----
-<p align="center">
-  Propiedad de ROBCO INDUSTRIES (Jous99) // 2026
-</p>
