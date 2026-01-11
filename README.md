@@ -48,7 +48,7 @@ El ecosistema F4MP se compone de tres pilares tecnológicos:
 
 Para evitar la fragmentación de la información, el progreso detallado de cada fase se publica exclusivamente en nuestra terminal oficial. Allí podrás ver el estado de los módulos de investigación y los hitos alcanzados.
 
-👉 **[CONSULTAR ROADMAP OFICIAL EN LA WEB](https://f4mp.joustech.space/roadmap)**
+👉 **[CONSULTAR ROADMAP OFICIAL EN LA WEB](https://f4mp.joustech.space/roadmap.php)**
 
 ---
 
