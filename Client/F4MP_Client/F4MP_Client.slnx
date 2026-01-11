@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="F4MP_Client.vcxproj" />
+  <Project Path="F4MP_Client.vcxproj" Id="93aa22ac-17c4-420a-9ce3-16430bf1ace3" />
 </Solution>
