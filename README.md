@@ -1,38 +1,67 @@
-# Project F4MP - Fallout 4 Multiplayer Mod
+# F4MP - Fallout 4 Multiplayer Project 🚀
 
 <p align="center">
-  <img src="logo.png" alt="Project F4MP Logo" width="400">
+  <img src="/logo.png" alt="F4MP Logo" width="300">
+  <br>
+  <i>Reconstruyendo la Commonwealth, un paquete de datos a la vez.</i>
 </p>
+
+![Game](https://img.shields.io/badge/Game-Fallout%204-brightgreen?style=for-the-badge&logo=bethesda)
+![Status](https://img.shields.io/badge/Status-Research_&_Development-orange?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-PC-blue?style=for-the-badge)
 
 ---
 
-## ☢️ Sobre el Proyecto
-**Project F4MP** es una ambiciosa modificación para **Fallout 4** que introduce capacidades multijugador en el Commonwealth. Explora el yermo, completa misiones y sobrevive a los peligros post-apocalípticos junto a tus amigos.
+## 📝 Descripción del Proyecto
 
-## ✨ Características Principales
-* **Sincronización en Tiempo Real:** Jugadores, NPCs y clima sincronizados.
-* **Mundo Persistente:** Servidores dedicados para una experiencia continua.
-* **Compatibilidad:** Diseñado para trabajar con una amplia selección de mods de la comunidad.
-* **Estilo Pip-Boy:** Interfaz integrada fiel a la estética de Bethesda.
+**F4MP** es un ambicioso proyecto de código abierto que busca implementar una infraestructura multijugador robusta para **Fallout 4**. A diferencia de otros intentos, F4MP se centra en la creación de un sistema de sincronización basado en un servidor maestro que permita la persistencia de datos, el combate cooperativo y la construcción de asentamientos compartidos.
 
-## 🚀 Instalación
-1.  Descarga la última versión desde la sección de [Releases](../../releases).
-2.  Extrae el contenido en tu carpeta raíz de **Fallout 4**.
-3.  Ejecuta `F4MP_Launcher.exe`.
-4.  ¡Conéctate a un servidor y empieza a jugar!
-
-## 🛠️ Requisitos
-* Fallout 4 (Versión de Steam/GOG actualizada).
-* F4SE (Fallout 4 Script Extender).
-* Una conexión a internet estable.
-
-## 🤝 Contribuir
-¿Quieres ayudar a reconstruir el mundo? ¡Las contribuciones son bienvenidas!
-* Reporta bugs en el apartado de **Issues**.
-* Propón nuevas ideas en **Discussions**.
-* Revisa nuestro sitio web oficial: [f4mp.joustech.space](https://f4mp.joustech.space/)
+Este proyecto es de carácter **educativo y sin ánimo de lucro**, desarrollado por y para la comunidad de entusiastas de la saga.
 
 ---
-<p align="center">
-  Hecho con ❤️ por la comunidad de Project F4MP.
-</p>
+
+## 🔬 Fase Actual: Investigación y Análisis (R&D)
+
+Actualmente, el repositorio **no contiene binarios ejecutables**. Nos encontramos en una fase de ingeniería inversa profunda para asegurar que la base del mod sea estable antes de cualquier lanzamiento público.
+
+### Objetivos de Investigación Crítica:
+* **Sincronización de Transformaciones:** Mapeo de vectores de posición y rotación de entidades en el Creation Engine.
+* **Hooking de Memoria:** Implementación de interceptores para acciones de combate (VATS, disparo, daño recibido).
+* **World State Sync:** Análisis de la persistencia de objetos soltados y cambios en el entorno (Cells).
+* **Protocolo de Red:** Desarrollo de una capa de transporte híbrida UDP/TCP para minimizar la latencia en el desierto capital.
+
+---
+
+## ⚙️ Arquitectura del Sistema
+
+El ecosistema F4MP se compone de tres pilares tecnológicos:
+
+1.  **F4MP Client Core:** Un inyector desarrollado en C++ que actúa como puente entre el motor del juego y nuestra red.
+2.  **Master Server:** Backend escalable encargado de la validación de usuarios, gestión de instancias y retransmisión de estados.
+3.  **Terminal de Control Web:** Interfaz de usuario para la gestión de residentes y monitorización del sistema.
+
+
+
+---
+
+## 🌐 Seguimiento y Progreso
+
+Para evitar la fragmentación de la información, el progreso detallado de cada fase se publica exclusivamente en nuestra terminal oficial. Allí podrás ver el estado de los módulos de investigación y los hitos alcanzados.
+
+👉 **[CONSULTAR ROADMAP OFICIAL EN LA WEB](https://f4mp.joustech.space/roadmap.php)**
+
+---
+
+## 🤝 Cómo contribuir
+
+Si tienes conocimientos en **ingeniería inversa, C++, Assembly (x64)** o **protocolos de red**, tu ayuda es bienvenida. 
+
+1.  Haz un **Fork** del proyecto.
+2.  Crea una rama para tu investigación (`git checkout -b feature/investigacion-x`).
+3.  Abre un **Pull Request** detallando tus hallazgos en la memoria del juego.
+
+---
+
+## ⚖️ Aviso Legal (Disclaimer)
+
+F4MP es un proyecto independiente y no está afiliado a Bethesda Softworks ni ZeniMax Media. El uso de este software es bajo tu propio riesgo y requiere una copia legal de Fallout 4. Todos los nombres y marcas registradas pertenecen a sus respectivos dueños.
