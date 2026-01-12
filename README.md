@@ -1,4 +1,4 @@
-# F4MP - Fallout 4 Multiplayer Project 🚀
+# F4MP - Fallout 4 Multiplayer Project 🚀.
 
 <p align="center">
   <img src="/logo.png" alt="F4MP Logo" width="300">
