@@ -1,33 +1,49 @@
-cmake_minimum_required(VERSION 3.20)
-project(F4MPClient LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.7)
+project(F4MPClient)
 
-add_library(F4MPClient SHARED
-    src/main.cpp
-    src/hooks/D3D11Hook.cpp
-    src/hooks/InputHook.cpp
-    src/network/NetworkClient.cpp
-    src/network/MessageHandler.cpp
-    src/ui/OverlayUI.cpp
-    src/utils/GameAddresses.cpp
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} CMakeModules/)
+
+set(EXECUTABLE F4MPClient)
+set(SRC_DIR ./src)
+set(INCLUDE_DIR ./include)
+
+# Setting resource path
+add_definitions(-D_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/resources/")
+message(${CMAKE_CURRENT_SOURCE_DIR}/resources)
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+include_directories(${EXECUTABLE}
+	${INCLUDE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_include_directories(F4MPClient PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/f4se/f4se
-    ${CMAKE_SOURCE_DIR}/f4se/f4se_common
+file(GLOB SourceFiles 
+	${SRC_DIR}/*
+	${SRC_DIR}/Utils/*
+	${SRC_DIR}/ThirdParty/*
+	${SRC_DIR}/Hooks/*
+	${SRC_DIR}/imgui/*
+	${SRC_DIR}/Network/*
 )
 
-target_link_libraries(F4MPClient PRIVATE
-    f4mp_common
-    d3d11
-    dxgi
-    winmm
+add_subdirectory(Common)
+
+add_library(${EXECUTABLE} SHARED ${SourceFiles})
+
+set_target_properties(${EXECUTABLE} PROPERTIES
+	CXX_STANDARD 17
+	CXX_EXTENSIONS ON
 )
 
-target_compile_features(F4MPClient PRIVATE cxx_std_20)
-
-set_target_properties(F4MPClient PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
+target_link_libraries(${EXECUTABLE}
+	${CMAKE_DL_LIBS}
+	${CMAKE_CURRENT_SOURCE_DIR}/lib/steam_api64.lib
+	${CMAKE_CURRENT_SOURCE_DIR}/lib/detours.lib
+	${CMAKE_CURRENT_SOURCE_DIR}/lib/spdlogd.lib
+	${CMAKE_CURRENT_SOURCE_DIR}/lib/GameNetworkingSockets_s.lib
+	Common
+	d3d11.lib
+	dxgi.lib
 )

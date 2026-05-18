@@ -1,96 +1,110 @@
-# F4MP - Fallout 4 Multiplayer Revived
+# F4MP - Fallout 4 Multiplayer
 
-A multiplayer mod for Fallout 4, ported and rebuilt for Next-Gen (1.10.980+) and Anniversary Edition (1.11.x).
+A multiplayer mod for Fallout 4, ported to work with Next-Gen (1.10.980+) and Anniversary Edition (1.11.x).
 
-## Status
+> **Original project was deprecated in 2021.** This is a revived and improved version.
 
-This is a complete rewrite of the original F4MP project which was deprecated in 2021. The original codebase was essentially a skeleton with no actual networking or server functionality implemented.
+## Changes from Original
 
-## Features (Planned/In Progress)
-
-- F4SE plugin architecture (no raw DLL injection)
-- Pattern scanning for version-independent address resolution
-- Real-time multiplayer via GameNetworkingSockets
-- Player position, rotation, and animation sync
-- Combat and damage synchronization
-- Chat system with UI overlay
-- Server with connection management and world state tracking
-- ImGui-based overlay menu (Delete key to toggle)
-
-## Requirements
-
-- **Fallout 4** Next-Gen (1.10.980+) or Anniversary Edition (1.11.x)
-- **F4SE** 0.6.23+ (for the client plugin)
-- **Visual Studio 2022** with C++ desktop development workload
-- **CMake** 3.20+
-- **vcpkg** for dependencies
+| Feature | Original | Ported |
+|---------|----------|--------|
+| Game version | Pre-Next-Gen (1.10.163) | Next-Gen 1.10.980+ / Anniversary 1.11.x |
+| Address resolution | Hardcoded offsets (breaks on update) | Pattern scanning (version-independent) |
+| Networking | Headers present, zero code | Full GameNetworkingSockets implementation |
+| Server | Empty stubs (Start/Update return nothing) | Functional with connection management, broadcast, chat |
+| Print hook | Bug: printed va_list pointer | Fixed: properly formats and prints strings |
+| Server fork() | Syntax error: `pid_t Pid fork();` | Fixed: `pid_t pid = fork();` |
+| Server main loop | `UMain()` returns 0 immediately | Full game loop with 30 tick rate |
+| ImGui | 1.67 WIP demo window only | Integrated menu with connect/disconnect UI |
+| CMake | `dxgi.dll` linked as lib | Fixed to `dxgi.lib` |
 
 ## Building
 
-### 1. Setup vcpkg
+### Prerequisites
 
-```powershell
-git clone https://github.com/microsoft/vcpkg.git
-.\vcpkg\bootstrap-vcpkg.bat
-.\vcpkg\vcpkg install --triplet x64-windows
-```
+- Visual Studio 2019/2022 with C++ desktop development
+- CMake 3.7+
+- All dependencies are included in `lib/` and `include/`
 
-### 2. Configure and Build
+### Client
 
-```powershell
-mkdir build
-cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake
-cmake --build . --config Release
-```
+1. Open Visual Studio
+2. File -> Open -> CMake -> select `client/CMakeLists.txt`
+3. Build -> Build All (x64-Release)
+4. Output: `out/build/x64-Release/F4MPClient.dll`
 
-### 3. Install
+### Server
 
-**Client:**
-- Copy `bin/F4MPClient.dll` to `<Fallout4>/Data/F4SE/Plugins/`
+1. Open Visual Studio
+2. File -> Open -> CMake -> select `server/CMakeLists.txt`
+3. Build -> Build All (x64-Release)
+4. Output: `out/build/x64-Release/F4MPServer.exe`
 
-**Server:**
-- Run `bin/F4MPServer.exe`
+## Installation
+
+### Client
+
+1. Place `F4MPClient.dll` in your Fallout 4 game directory
+2. Inject using your preferred DLL injector, or set up as a load library mod
+3. Launch Fallout 4
+4. Press **Delete** to toggle the F4MP menu
+
+### Server
+
+1. Run `F4MPServer.exe`
+2. A `config.json` will be created automatically on first run
+3. Edit `config.json` to change port, player limit, etc.
+4. Default: `127.0.0.1:7779`
+
+## Usage
+
+1. Start the server first
+2. Launch Fallout 4 with the client DLL loaded
+3. Press **Delete** to open the F4MP menu
+4. Enter server address and click **Connect**
+5. Status indicator shows connection state
 
 ## Architecture
 
+### Client
+- **DLL injection** into Fallout4.exe
+- **D3D11 Present hook** via Microsoft Detours for ImGui overlay
+- **Pattern scanning** to resolve game addresses at runtime (no hardcoded offsets)
+- **GameNetworkingSockets** for reliable UDP networking
+- **ImGui** for in-game UI
+
+### Server
+- **Standalone executable** using GameNetworkingSockets
+- **Listen socket** for accepting client connections
+- **Message routing** - broadcasts player positions, chat, etc.
+- **Client management** - tracks connected players, handles disconnects
+
+### Protocol
+Messages use a binary format:
 ```
-F4MP/
-├── common/          # Shared library (logging, config, protocol, pattern scanning)
-├── client/          # F4SE plugin (hooks, networking, UI)
-├── server/          # Dedicated server executable
-└── f4se/            # F4SE SDK headers
+[MessageHeader: type(2) + size(4) + timestamp(8)]
+[Payload: variable]
 ```
 
-## Protocol
+Message types: ConnectionRequest, ConnectionAccepted, PlayerPosition, ChatMessage, DamageDealt, etc.
 
-Communication uses a binary message protocol over GameNetworkingSockets:
+## Known Issues
 
-- Connection management (handshake, accept/reject, disconnect)
-- Player state (position, rotation, animation)
-- Combat events (damage, death, projectiles)
-- World state (entity spawn/despawn, object state)
-- Chat messages
-
-## Differences from Original F4MP
-
-| Aspect | Original F4MP | F4MP Revived |
-|--------|---------------|--------------|
-| Loading | Raw DLL injection | F4SE plugin |
-| Addresses | Hardcoded offsets | Pattern scanning |
-| Networking | Headers only, no code | Full GameNetworkingSockets impl |
-| Server | Empty stubs | Functional server with client management |
-| C++ Standard | C++17 | C++20 |
-| Dependencies | Pre-compiled libs | vcpkg managed |
-| ImGui | 1.67 WIP (2019) | Latest stable |
+- Pattern signatures may need updating for future game patches
+- No entity/NPC synchronization yet (players only)
+- No inventory or quest synchronization
+- Anti-cheat not implemented
 
 ## License
 
-Original F4MP code was released to the public domain. This revived version is also public domain.
+Original F4MP code: Public Domain (Unlicense)
+This port: Same license as original
 
 ## Credits
 
-- Original F4MP team for the initial concept
-- Ian Patterson for F4SE
-- Valve for GameNetworkingSockets
-- ocornut for Dear ImGui
+- Original F4MP team (Alin Octavian, Benjamin Kyd)
+- Microsoft Detours
+- Valve GameNetworkingSockets
+- Dear ImGui (ocornut)
+- spdlog (gabime)
+- nlohmann/json

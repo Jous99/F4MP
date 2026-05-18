@@ -1,9 +1,8 @@
 #include "NetworkClient.h"
-#include "f4mp/Logger.h"
-
+#include <spdlog/spdlog.h>
 #include <chrono>
 
-namespace f4mp {
+namespace Network {
 
 NetworkClient& NetworkClient::GetInstance() {
     static NetworkClient instance;
@@ -11,15 +10,13 @@ NetworkClient& NetworkClient::GetInstance() {
 }
 
 bool NetworkClient::Initialize() {
-    if (m_initialized) {
-        return true;
-    }
+    if (m_initialized) return true;
 
-    Logger::Info("Initializing network client");
+    spdlog::info("[Network] Initializing GameNetworkingSockets...");
 
     SteamNetworkingErrMsg errMsg;
     if (!SteamNetworkingSockets_Init(nullptr, errMsg)) {
-        Logger::Error("Failed to initialize GameNetworkingSockets: %s", errMsg);
+        spdlog::error("[Network] Failed to init GameNetworkingSockets: {}", errMsg);
         return false;
     }
 
@@ -27,12 +24,16 @@ bool NetworkClient::Initialize() {
     m_utils = SteamNetworkingUtils();
 
     if (!m_sockets || !m_utils) {
-        Logger::Error("Failed to get networking interfaces");
+        spdlog::error("[Network] Failed to get networking interfaces");
         return false;
     }
 
-    Logger::Info("GameNetworkingSockets initialized");
+    int opt = 1;
+    m_sockets->SetConnectionConfigValueInt(k_HSteamNetConnection_Invalid,
+        k_ESteamNetworkingConfig_IP_AllowWithoutAuth, opt);
+
     m_initialized = true;
+    spdlog::info("[Network] GameNetworkingSockets initialized");
     return true;
 }
 
@@ -46,14 +47,14 @@ void NetworkClient::Shutdown() {
         m_initialized = false;
     }
 
-    Logger::Info("Network client shutdown");
+    spdlog::info("[Network] Network client shutdown");
 }
 
 bool NetworkClient::Connect(const std::string& address, uint16_t port) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
     if (m_connected) {
-        Logger::Warn("Already connected");
+        spdlog::warn("[Network] Already connected");
         return false;
     }
 
@@ -63,21 +64,17 @@ bool NetworkClient::Connect(const std::string& address, uint16_t port) {
     SteamNetworkingIPAddr serverAddr;
     serverAddr.Clear();
     if (!serverAddr.ParseString(addrStr)) {
-        Logger::Error("Invalid server address: %s", addrStr);
+        spdlog::error("[Network] Invalid server address: {}", addrStr);
         return false;
     }
-
-    int opt = 1;
-    m_sockets->SetConnectionConfigValueInt(k_HSteamNetConnection_Invalid, k_ESteamNetworkingConfig_IP_AllowWithoutAuth, opt);
 
     m_connection = m_sockets->ConnectByIPAddress(serverAddr, 0, nullptr);
-
     if (m_connection == k_HSteamNetConnection_Invalid) {
-        Logger::Error("Failed to create connection to %s", addrStr);
+        spdlog::error("[Network] Failed to create connection to {}", addrStr);
         return false;
     }
 
-    Logger::Info("Connecting to %s...", addrStr);
+    spdlog::info("[Network] Connecting to {}...", addrStr);
     return true;
 }
 
@@ -92,14 +89,18 @@ void NetworkClient::Disconnect() {
     m_connected = false;
     m_playerId = 0;
 
-    Logger::Info("Disconnected from server");
+    if (m_connectionCallback) {
+        m_connectionCallback(false);
+    }
+
+    spdlog::info("[Network] Disconnected from server");
 }
 
 void NetworkClient::SendMessage(MessageType type, const void* data, uint32_t size) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
     if (!m_connected || m_connection == k_HSteamNetConnection_Invalid) {
-        Logger::Warn("Cannot send message: not connected");
+        spdlog::warn("[Network] Cannot send: not connected");
         return;
     }
 
@@ -108,7 +109,6 @@ void NetworkClient::SendMessage(MessageType type, const void* data, uint32_t siz
     header.size = sizeof(MessageHeader) + size;
     header.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
-    header.sequence = m_sequence++;
 
     std::vector<uint8_t> buffer(header.size);
     memcpy(buffer.data(), &header, sizeof(MessageHeader));
@@ -117,15 +117,11 @@ void NetworkClient::SendMessage(MessageType type, const void* data, uint32_t siz
     }
 
     EResult result = m_sockets->SendMessageToConnection(
-        m_connection,
-        buffer.data(),
-        buffer.size(),
-        k_nSteamNetworkingSend_Reliable,
-        nullptr
-    );
+        m_connection, buffer.data(), buffer.size(),
+        k_nSteamNetworkingSend_Reliable, nullptr);
 
     if (result != k_EResultOK) {
-        Logger::Error("Failed to send message: %d", result);
+        spdlog::error("[Network] Failed to send message: {}", result);
     }
 }
 
@@ -150,12 +146,21 @@ void NetworkClient::PumpMessages() {
             const auto* header = reinterpret_cast<const MessageHeader*>(msg->m_pData);
             const void* payload = reinterpret_cast<const uint8_t*>(msg->m_pData) + sizeof(MessageHeader);
 
-            if (m_messageCallback) {
+            if (header->type == MessageType::ConnectionAccepted) {
+                const auto* acceptMsg = reinterpret_cast<const ConnectionAcceptedMsg*>(payload);
+                m_playerId = acceptMsg->playerId;
+                m_connected = true;
+                spdlog::info("[Network] Connected! Player ID: {}, Players: {}/{}",
+                    m_playerId, acceptMsg->currentPlayers, acceptMsg->maxPlayers);
+                if (m_connectionCallback) m_connectionCallback(true);
+            } else if (header->type == MessageType::ConnectionRejected) {
+                spdlog::error("[Network] Connection rejected by server");
+                if (m_connectionCallback) m_connectionCallback(false);
+            } else if (m_messageCallback) {
                 m_messageCallback(*header, payload);
             }
         }
         msg->Release();
-
         msgCount = m_sockets->ReceiveMessagesOnConnection(m_connection, &msg, 1, 0);
     }
 
@@ -164,41 +169,9 @@ void NetworkClient::PumpMessages() {
         if (msg->m_cbSize >= sizeof(MessageHeader)) {
             const auto* header = reinterpret_cast<const MessageHeader*>(msg->m_pData);
             const void* payload = reinterpret_cast<const uint8_t*>(msg->m_pData) + sizeof(MessageHeader);
-
-            if (m_messageCallback) {
-                m_messageCallback(*header, payload);
-            }
+            if (m_messageCallback) m_messageCallback(*header, payload);
         }
         msg->Release();
-    }
-}
-
-void NetworkClient::OnConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* pInfo) {
-    switch (pInfo->m_info.m_eState) {
-        case k_ESteamNetworkingConnectionState_Connecting:
-            Logger::Info("Connecting to server...");
-            break;
-
-        case k_ESteamNetworkingConnectionState_Connected:
-            Logger::Info("Connected to server");
-            m_connected = true;
-            if (m_connectionCallback) {
-                m_connectionCallback(true);
-            }
-            break;
-
-        case k_ESteamNetworkingConnectionState_ClosedByPeer:
-        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
-            Logger::Warn("Connection closed: %d", pInfo->m_info.m_eState);
-            m_connected = false;
-            m_connection = k_HSteamNetConnection_Invalid;
-            if (m_connectionCallback) {
-                m_connectionCallback(false);
-            }
-            break;
-
-        default:
-            break;
     }
 }
 
