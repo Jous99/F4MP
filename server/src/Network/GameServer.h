@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <queue>
 #include <mutex>
 #include <chrono>
 
@@ -101,9 +102,23 @@ public:
     uint32_t GetPlayerCount() const;
 
     void SetMaxPlayers(uint32_t n) { if (n > 0) m_maxPlayers = n; }
+    void SetName(const std::string& name) { m_name = name; }
+    void Stop() { m_running = false; }
+
+    // Encola un comando de consola para procesarlo en el hilo principal.
+    void QueueCommand(const std::string& cmd);
 
 private:
     GameServer() = default;
+
+    // --- Consola de administracion ---
+    void ProcessConsoleCommands();
+    void HandleCommand(const std::string& line);
+    void CmdList();
+    void CmdKick(uint32_t id);
+    void CmdSay(const std::string& msg);
+    void PrintStatus();
+    double UptimeSeconds() const;
 
     void HandleConnectionRequest(HSteamNetConnection conn, const ConnectionRequestMsg* msg);
     void HandlePlayerPosition(HSteamNetConnection conn, const PlayerPositionMsg* msg);
@@ -127,6 +142,13 @@ private:
 
     uint32_t m_nextClientId = 1;
     uint32_t m_maxPlayers = MAX_PLAYERS;
+    std::string m_name = "F4MP Server";
+
+    std::chrono::steady_clock::time_point m_startTime;
+    std::chrono::steady_clock::time_point m_lastStatus;
+
+    std::queue<std::string> m_commands;
+    std::mutex m_cmdMutex;
 
     bool m_running = false;
     bool m_initialized = false;

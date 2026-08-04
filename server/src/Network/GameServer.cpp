@@ -2,6 +2,9 @@
 #include <spdlog/spdlog.h>
 #include <thread>
 #include <cstring>
+#include <sstream>
+#include <algorithm>
+#include <cctype>
 
 GameServer& GameServer::GetInstance() {
     static GameServer instance;
@@ -49,9 +52,19 @@ bool GameServer::Initialize(uint16_t port) {
         return false;
     }
 
-    spdlog::info("[Server] Listening on port {} (max players: {})", port, m_maxPlayers);
+    m_startTime = std::chrono::steady_clock::now();
+    m_lastStatus = m_startTime;
     m_initialized = true;
     m_running = true;
+
+    spdlog::info("========================================");
+    spdlog::info("  {}", m_name);
+    spdlog::info("  Puerto      : {}", port);
+    spdlog::info("  Jugadores   : 0/{}", m_maxPlayers);
+    spdlog::info("  Tick rate   : 30/s");
+    spdlog::info("  Escuchando conexiones...");
+    spdlog::info("  Escribe 'help' para ver los comandos.");
+    spdlog::info("========================================");
     return true;
 }
 
@@ -85,8 +98,6 @@ void GameServer::Shutdown() {
 }
 
 void GameServer::Run() {
-    spdlog::info("[Server] Main loop started");
-
     auto lastTick = std::chrono::steady_clock::now();
 
     while (m_running) {
@@ -98,6 +109,12 @@ void GameServer::Run() {
             lastTick = now;
         }
 
+        // Estado periodico cada 30 segundos (estilo Rust).
+        if (std::chrono::duration<float>(now - m_lastStatus).count() >= 30.0f) {
+            PrintStatus();
+            m_lastStatus = now;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
@@ -106,6 +123,7 @@ void GameServer::Update() {
     // Procesa estados de conexion (dispara OnConnStatusChanged) y mensajes.
     m_sockets->RunCallbacks();
     ProcessMessages();
+    ProcessConsoleCommands();
 }
 
 uint32_t GameServer::GetPlayerCount() const {
@@ -151,7 +169,8 @@ void GameServer::HandleConnectionRequest(HSteamNetConnection conn, const Connect
     m_sockets->SendMessageToConnection(conn, buffer.data(), (uint32_t)buffer.size(),
         k_nSteamNetworkingSend_Reliable, nullptr);
 
-    spdlog::info("[Server] Player '{}' connected (ID: {})", client.name.c_str(), client.id);
+    spdlog::info("[+] {} se ha unido  (ID {}) - jugadores {}/{}",
+        client.name.c_str(), client.id, GetPlayerCount(), m_maxPlayers);
 
     ChatMessageMsg welcomeMsg{};
     welcomeMsg.senderId = 0;
@@ -285,7 +304,7 @@ void GameServer::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* 
             std::lock_guard<std::mutex> lock(m_clientsMutex);
             auto it = m_clients.find(info->m_hConn);
             if (it != m_clients.end()) {
-                spdlog::info("[Server] Player '{}' disconnected", it->second.name.c_str());
+                std::string leftName = it->second.name;
 
                 ChatMessageMsg leaveMsg{};
                 leaveMsg.senderId = 0;
@@ -296,6 +315,7 @@ void GameServer::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* 
                 m_clients.erase(it);
 
                 BroadcastMessage(MessageType::ChatMessage, &leaveMsg, sizeof(leaveMsg), playerId);
+                spdlog::info("[-] {} se ha ido  - jugadores {}/{}", leftName, GetPlayerCount(), m_maxPlayers);
             }
             m_sockets->CloseConnection(info->m_hConn, 0, nullptr, false);
             break;
@@ -304,4 +324,112 @@ void GameServer::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* 
         default:
             break;
     }
+}
+
+// ===================== Consola de administracion =====================
+
+double GameServer::UptimeSeconds() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - m_startTime).count();
+}
+
+void GameServer::PrintStatus() {
+    int total = static_cast<int>(UptimeSeconds());
+    int h = total / 3600, m = (total % 3600) / 60, s = total % 60;
+
+    uint32_t players;
+    {
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        players = GetPlayerCount();
+    }
+    spdlog::info("[status] {} | activo {:02d}:{:02d}:{:02d} | jugadores {}/{} | 30 tick",
+        m_name, h, m, s, players, m_maxPlayers);
+}
+
+void GameServer::QueueCommand(const std::string& cmd) {
+    std::lock_guard<std::mutex> lock(m_cmdMutex);
+    m_commands.push(cmd);
+}
+
+void GameServer::ProcessConsoleCommands() {
+    for (;;) {
+        std::string line;
+        {
+            std::lock_guard<std::mutex> lock(m_cmdMutex);
+            if (m_commands.empty()) break;
+            line = std::move(m_commands.front());
+            m_commands.pop();
+        }
+        HandleCommand(line);
+    }
+}
+
+void GameServer::HandleCommand(const std::string& line) {
+    std::istringstream iss(line);
+    std::string cmd;
+    iss >> cmd;
+    if (cmd.empty()) return;
+
+    std::transform(cmd.begin(), cmd.end(), cmd.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (cmd == "help") {
+        spdlog::info("Comandos disponibles:");
+        spdlog::info("  help          - muestra esta ayuda");
+        spdlog::info("  status / list - lista de jugadores conectados");
+        spdlog::info("  say <mensaje> - envia un mensaje a todos los jugadores");
+        spdlog::info("  kick <id>     - expulsa a un jugador por su ID");
+        spdlog::info("  stop / quit   - apaga el servidor");
+    } else if (cmd == "status" || cmd == "list") {
+        CmdList();
+    } else if (cmd == "say") {
+        std::string msg;
+        std::getline(iss, msg);
+        if (!msg.empty() && msg.front() == ' ') msg.erase(0, 1);
+        if (msg.empty()) spdlog::warn("Uso: say <mensaje>");
+        else CmdSay(msg);
+    } else if (cmd == "kick") {
+        uint32_t id = 0;
+        if (iss >> id) CmdKick(id);
+        else spdlog::warn("Uso: kick <id>");
+    } else if (cmd == "stop" || cmd == "quit" || cmd == "exit") {
+        spdlog::info("Apagando el servidor...");
+        Stop();
+    } else {
+        spdlog::warn("Comando desconocido: '{}'. Escribe 'help'.", cmd);
+    }
+}
+
+void GameServer::CmdList() {
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    spdlog::info("Jugadores conectados: {}/{}", GetPlayerCount(), m_maxPlayers);
+    for (const auto& [conn, c] : m_clients) {
+        if (c.isConnected)
+            spdlog::info("  ID {:<4} {}", c.id, c.name);
+    }
+}
+
+void GameServer::CmdKick(uint32_t id) {
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
+        if (it->second.id == id) {
+            std::string name = it->second.name;
+            m_sockets->CloseConnection(it->first, 0, "Kicked by admin", false);
+            m_clients.erase(it);
+            spdlog::info("[admin] '{}' (ID {}) expulsado", name, id);
+            return;
+        }
+    }
+    spdlog::warn("[admin] No hay ningun jugador con ID {}", id);
+}
+
+void GameServer::CmdSay(const std::string& msg) {
+    ChatMessageMsg m{};
+    m.senderId = 0;
+    snprintf(m.message, sizeof(m.message), "[Servidor] %s", msg.c_str());
+    m.channel = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_clientsMutex);
+        BroadcastMessage(MessageType::ChatMessage, &m, sizeof(m), 0);
+    }
+    spdlog::info("[Servidor] {}", msg);
 }

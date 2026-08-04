@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cassert>
 #include <csignal>
+#include <thread>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -28,19 +29,16 @@ void SignalHandler(int signal) {
 }
 
 int UMain() {
-    spdlog::info("[Server] F4MP Server v1.0.0 - Next-Gen Compatible");
-    spdlog::info("[Server] Copyright (C) 2020-2026 Alin Octavian, Benjamin Kyd");
-    spdlog::info("[Server] This program comes with ABSOLUTELY NO WARRANTY.");
-    spdlog::info("[Server] This is free software, redistribute under certain conditions; see LICENSE");
+    spdlog::info("F4MP Server v1.0.0 - Next-Gen Compatible");
 
     uint16_t port = static_cast<uint16_t>(Config::getInstance().Port);
-    std::string ip = Config::getInstance().Ip;
 
     if (!Config::getInstance().LogLocation.empty() && Config::getInstance().LogLocation != "NONE") {
         auto file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("file_logger", Config::getInstance().LogLocation);
         spdlog::set_default_logger(file_logger);
     }
 
+    GameServer::GetInstance().SetName(Config::getInstance().Name);
     GameServer::GetInstance().SetMaxPlayers(Config::getInstance().PlayerLimit);
 
     if (!GameServer::GetInstance().Initialize(port)) {
@@ -48,8 +46,13 @@ int UMain() {
         return 1;
     }
 
-    spdlog::info("[Server] Server started on {}:{}", ip, port);
-    spdlog::info("[Server] Press Ctrl+C to stop");
+    // Hilo que lee comandos del teclado y los encola para el bucle principal.
+    std::thread([]() {
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            GameServer::GetInstance().QueueCommand(line);
+        }
+    }).detach();
 
     GameServer::GetInstance().Run();
 
@@ -73,6 +76,7 @@ int main(int argc, char** argv) {
 
     if (!std::filesystem::exists(ConfigLocation)) {
         nlohmann::json Config;
+        Config["server-name"] = "My F4MP Server";
         Config["ip"] = "127.0.0.1";
         Config["port"] = 7779;
         Config["run-as-service"] = false;
