@@ -21,7 +21,12 @@ add_definitions(-DGIT_VERSION="${GIT_REV}")
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M")
 add_definitions(-DBUILD_TIME="${BUILD_TIME}")
 
-# --- Dependencias via vcpkg ---
+# --- Dependencias vendidas en el repo (third_party) para no necesitar vcpkg ---
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/deps/x64-windows/share")
+    list(INSERT CMAKE_PREFIX_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/deps/x64-windows")
+    message(STATUS "F4MP: usando dependencias de third_party/deps (sin vcpkg)")
+endif()
+
 find_package(GameNetworkingSockets CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 

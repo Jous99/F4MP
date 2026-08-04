@@ -1,0 +1,43 @@
+# Genera las dependencias compiladas (GameNetworkingSockets + spdlog) UNA vez
+# y las sube como artifact para que las descargues y las metas en third_party/deps.
+# Despues de esto NO se vuelve a necesitar (las dependencias viven en el repo).
+#
+# Uso: pestana Actions -> "Make Deps" -> Run workflow.
+#      Luego descarga el artifact "f4mp-deps", descomprimelo dentro de
+#      third_party/deps/  (debe quedar third_party/deps/x64-windows/share/...)
+#      y haz commit de third_party/.
+
+name: Make Deps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  make-deps:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compilar dependencias (vcpkg, solo aqui en GitHub)
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install gamenetworkingsockets:x64-windows spdlog:x64-windows
+
+      - name: Empaquetar dependencias
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path third_party/deps/x64-windows | Out-Null
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/*" third_party/deps/x64-windows/ -Recurse -Force
+
+      - name: Subir artifact (para descargar y commitear)
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4mp-deps
+          path: third_party/deps
