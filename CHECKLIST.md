@@ -19,6 +19,7 @@ Leyenda: ✅ hecho · 🟡 parcial / con bugs · ⬜ pendiente
 - [x] Llamar a `RunCallbacks()` periódicamente
 - [x] Detectar cambios de estado por callback (`SetGlobalCallback_SteamNetConnectionStatusChanged`)
 - [x] Campo de **nombre de jugador** en el menú
+- [x] Cargar como plugin de F4SE (`Data\F4SE\Plugins`) — sin inyector
 - [ ] Leer la posición/rotación del jugador local desde la memoria del juego
 - [ ] Crear y mover los actores de los jugadores remotos en el mundo
 - [ ] Interpolación de jugadores remotos (movimiento suave)

@@ -32,7 +32,14 @@ You can also grab a prebuilt DLL from the **Actions** tab (artifact `F4MPClient`
 
 **Option A — ASI loader (no code changes).** The DLL bootstraps from `DllMain`, so an ASI loader works: drop Ultimate ASI Loader next to `Fallout4.exe` as a proxy (`winmm.dll` / `dinput8.dll` — not `dxgi`/`d3d11`, which the mod hooks), rename `F4MPClient.dll` to `F4MPClient.asi`, and launch the game.
 
-**Option B — F4SE plugin (planned).** Loading from `Data/F4SE/Plugins/` is the clean "mod" path but requires adding the F4SE entry points to the DLL. Not implemented yet.
+**Option B — F4SE plugin (recommended).** The DLL now exports the F4SE plugin entry points, so it loads as a normal mod:
+
+1. Install **F4SE** (the version matching your game — there is an F4SE build for the Next-Gen update).
+2. Put `F4MPClient.dll` in `Data/F4SE/Plugins/`.
+3. Put the runtime DLLs (`steam_api64.dll`, `GameNetworkingSockets.dll`, `libcrypto-3-x64.dll`, …) next to `Fallout4.exe` — Windows resolves a plugin's dependencies from the game root, not from the `Plugins` folder.
+4. Launch the game **through F4SE** (`f4se_loader.exe`).
+
+The plugin is declared version-independent (it uses pattern scanning), so F4SE loads it on any game version.
 
 **Option C — manual injection.** Any DLL injector into `Fallout4.exe`.
 
