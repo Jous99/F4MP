@@ -5,6 +5,8 @@
 #include <cassert>
 #include <csignal>
 #include <thread>
+#include <memory>
+#include <vector>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -33,10 +35,16 @@ int UMain() {
 
     uint16_t port = static_cast<uint16_t>(Config::getInstance().Port);
 
-    if (!Config::getInstance().LogLocation.empty() && Config::getInstance().LogLocation != "NONE") {
-        auto file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("file_logger", Config::getInstance().LogLocation);
-        spdlog::set_default_logger(file_logger);
+    // Logger con salida a consola Y (opcionalmente) a archivo a la vez.
+    std::vector<spdlog::sink_ptr> sinks;
+    sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+    const std::string& logLoc = Config::getInstance().LogLocation;
+    if (!logLoc.empty() && logLoc != "NONE") {
+        sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logLoc, true));
     }
+    auto logger = std::make_shared<spdlog::logger>("f4mp", sinks.begin(), sinks.end());
+    logger->set_level(spdlog::level::info);
+    spdlog::set_default_logger(logger);
 
     GameServer::GetInstance().SetName(Config::getInstance().Name);
     GameServer::GetInstance().SetMaxPlayers(Config::getInstance().PlayerLimit);
