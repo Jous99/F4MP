@@ -57,21 +57,6 @@ int UMain() {
     return 0;
 }
 
-#if defined(_WINDOWS)
-#define SERVICE_NAME L"F4MPService"
-
-static DWORD WINAPI serviceWorkerThread(LPVOID lpParam) {
-    UMain();
-    return 0;
-}
-
-static void WINAPI serviceMain(DWORD argc, TCHAR** argv) {
-    // TODO: Implement Windows Service properly
-    UMain();
-}
-
-#endif
-
 int main(int argc, char** argv) {
     std::signal(SIGINT, SignalHandler);
     std::signal(SIGTERM, SignalHandler);
@@ -103,39 +88,9 @@ int main(int argc, char** argv) {
     InConfig >> Config::getInstance().JSON;
     Config::getInstance().Setup();
 
+    // Modo servicio de Windows: pendiente. Por ahora se ejecuta en modo consola.
     if (Config::getInstance().RunAsService == true) {
-#if defined(_WINDOWS)
-        spdlog::get("console")->info("Starting as Windows service");
-
-        SERVICE_TABLE_ENTRY ServiceTable[] = {
-            {reinterpret_cast<LPWSTR>(SERVICE_NAME), (LPSERVICE_MAIN_FUNCTION)serviceMain},
-            {nullptr, nullptr}
-        };
-
-        if (StartServiceCtrlDispatcher(ServiceTable) == FALSE) {
-            spdlog::get("console")->warn("Failed to start as service, running normally");
-            return UMain();
-        }
-#else
-        spdlog::get("console")->info("Starting as UNIX daemon");
-
-        pid_t pid = fork();
-        if (pid < 0) {
-            spdlog::get("console")->error("Failed to fork, running normally");
-            return UMain();
-        }
-
-        if (pid > 0) {
-            spdlog::get("console")->info("Parent process terminating");
-            exit(0);
-        }
-
-        close(STDIN_FILENO);
-        close(STDOUT_FILENO);
-        close(STDERR_FILENO);
-
-        return UMain();
-#endif
+        spdlog::get("console")->warn("run-as-service todavia no esta implementado; ejecutando en modo consola");
     }
 
     return UMain();
