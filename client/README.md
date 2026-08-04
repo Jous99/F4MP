@@ -36,7 +36,7 @@ You can also grab a prebuilt DLL from the **Actions** tab (artifact `F4MPClient`
 
 1. Install **F4SE** (the version matching your game — there is an F4SE build for the Next-Gen update).
 2. Put `F4MPClient.dll` in `Data/F4SE/Plugins/`.
-3. Put the runtime DLLs (`steam_api64.dll`, `GameNetworkingSockets.dll`, `libcrypto-3-x64.dll`, …) next to `Fallout4.exe` — Windows resolves a plugin's dependencies from the game root, not from the `Plugins` folder.
+3. Put the GameNetworkingSockets runtime DLLs (`GameNetworkingSockets.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, `libprotobuf.dll`, `abseil_dll.dll`, `fmt.dll`, `spdlog.dll`) next to `Fallout4.exe` — Windows resolves a plugin's dependencies from the game root, not from the `Plugins` folder. **Do NOT copy our `steam_api64.dll` into the game root** — it would overwrite Fallout's own Steam DLL and break the game. The game already loads its own, which satisfies the dependency.
 4. Launch the game **through F4SE** (`f4se_loader.exe`).
 
 The plugin is declared version-independent (it uses pattern scanning), so F4SE loads it on any game version.

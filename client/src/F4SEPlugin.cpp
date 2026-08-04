@@ -1,80 +1,127 @@
-// Soporte para cargar F4MP como plugin de F4SE (Fallout 4 Script Extender).
+// Port de F4MP como plugin de F4SE (Fallout 4 Script Extender).
 //
-// F4SE carga automaticamente los DLL que esten en  Data\F4SE\Plugins\  y que
-// exporten estos simbolos. El arranque real de F4MP ocurre en DllMain (main.cpp),
-// asi que aqui solo declaramos la informacion que F4SE necesita para aceptar y
-// mantener cargado el plugin.
+// Un plugin de F4SE bien hecho NO inicializa cosas pesadas al cargar el DLL.
+// En vez de eso, se registra en la mensajeria de F4SE y arranca cuando el juego
+// avisa de que ya esta listo (kMessage_GameDataReady / kMessage_GameLoaded).
+// Esto evita el crash "exception occurred while loading plugins".
 //
-// Se declara la estructura de F4SE de forma minima (sin necesitar el SDK completo).
+// Aqui se declara de forma minima la API de F4SE (sin necesitar el SDK completo).
 
 #include <cstdint>
 
-// ---------------------------------------------------------------------------
-//  API nueva (F4SE de Next-Gen / Anniversary): estructura de version exportada
-// ---------------------------------------------------------------------------
-struct F4SEPluginVersionData
-{
-    enum { kVersion = 1 };
+// La inicializacion real de F4MP vive en main.cpp.
+extern "C" void F4MP_StartInit();
 
+// ---------------------------------------------------------------------------
+//  Estructuras minimas de la API de F4SE
+// ---------------------------------------------------------------------------
+typedef uint32_t PluginHandle;
+
+struct F4SEInterface {
+    uint32_t     f4seVersion;
+    uint32_t     runtimeVersion;
+    uint32_t     interfaceVersion;
+    void*        (*QueryInterface)(uint32_t id);
+    PluginHandle (*GetPluginHandle)(void);
+    uint32_t     (*GetReleaseIndex)(void);
+    const void*  (*GetPluginInfo)(const char* name);
+};
+
+struct F4SEMessagingInterface {
+    struct Message {
+        const char* sender;
+        uint32_t    type;
+        uint32_t    dataLen;
+        void*       data;
+    };
+    typedef void (*EventCallback)(Message* msg);
+
+    uint32_t interfaceVersion;
+    bool  (*RegisterListener)(PluginHandle listener, const char* sender, EventCallback handler);
+    bool  (*Dispatch)(PluginHandle sender, uint32_t messageType, void* data, uint32_t dataLen, const char* receiver);
+    void* (*GetEventDispatcher)(uint32_t dispatcherId);
+};
+
+// IDs de interfaz de F4SE
+enum { kInterface_Messaging = 1 };
+
+// Tipos de mensaje de F4SE (en orden)
+enum {
+    kMessage_PostLoad = 0,
+    kMessage_PostPostLoad,
+    kMessage_PreLoadGame,
+    kMessage_PostLoadGame,
+    kMessage_PreSaveGame,
+    kMessage_PostSaveGame,
+    kMessage_DeleteGame,
+    kMessage_InputLoaded,
+    kMessage_NewGame,
+    kMessage_GameLoaded,
+    kMessage_GameDataReady,
+};
+
+// ---------------------------------------------------------------------------
+//  Estructura de version exportada (API de F4SE Next-Gen / Anniversary)
+// ---------------------------------------------------------------------------
+struct F4SEPluginVersionData {
+    enum { kVersion = 1 };
     enum {
         kVersionIndependent_AddressLibraryPostNG = 1 << 0,
         kVersionIndependent_Signatures           = 1 << 1,
         kVersionIndependent_StructsPost1105      = 1 << 2,
     };
+    enum { kVersionIndependentEx_NoStructUse = 1 << 0 };
 
-    enum {
-        kVersionIndependentEx_NoStructUse = 1 << 0,
-    };
-
-    uint32_t dataVersion;            // = kVersion
-    uint32_t pluginVersion;          // version de nuestro plugin
-    char     name[256];              // nombre ASCII terminado en null
-    char     author[256];            // autor (puede ir vacio)
-    char     supportEmail[256];      // email de soporte (puede ir vacio)
-    uint32_t versionIndependenceEx;  // flags
-    uint32_t versionIndependence;    // flags
-    uint32_t compatibleVersions[16]; // lista terminada en 0; 0 = todas si es independiente de version
-    uint32_t seVersionRequired;      // version minima de F4SE, 0 = cualquiera
+    uint32_t dataVersion;
+    uint32_t pluginVersion;
+    char     name[256];
+    char     author[256];
+    char     supportEmail[256];
+    uint32_t versionIndependenceEx;
+    uint32_t versionIndependence;
+    uint32_t compatibleVersions[16];
+    uint32_t seVersionRequired;
 };
 
 extern "C" __declspec(dllexport) F4SEPluginVersionData F4SEPlugin_Version =
 {
     F4SEPluginVersionData::kVersion,
-    1,                    // pluginVersion
-    "F4MP",               // name
-    "F4MP",               // author
-    "",                   // supportEmail
-    // F4MP usa pattern scanning y no depende del layout de estructuras del juego,
-    // asi que es independiente de la version del juego.
-    F4SEPluginVersionData::kVersionIndependentEx_NoStructUse,
+    1,          // pluginVersion
+    "F4MP",     // name
+    "F4MP",     // author
+    "",         // supportEmail
+    0,
+    // F4MP resuelve direcciones por pattern scanning -> independiente de version.
     F4SEPluginVersionData::kVersionIndependent_Signatures,
-    { 0 },                // compatibleVersions: todas
-    0                     // seVersionRequired: cualquiera
+    { 0 },      // compatibleVersions: todas
+    0           // seVersionRequired: cualquiera
 };
 
 // ---------------------------------------------------------------------------
-//  API clasica (F4SE antiguo): por compatibilidad hacia atras.
-//  Si F4SE encuentra F4SEPlugin_Version, ignora estas dos.
+//  Manejador de mensajes de F4SE
 // ---------------------------------------------------------------------------
-struct PluginInfo
-{
-    enum { kInfoVersion = 1 };
-    uint32_t     infoVersion;
-    const char*  name;
-    uint32_t     version;
-};
-
-extern "C" __declspec(dllexport) bool F4SEPlugin_Query(const void* /*f4se*/, PluginInfo* info)
-{
-    info->infoVersion = PluginInfo::kInfoVersion;
-    info->name = "F4MP";
-    info->version = 1;
-    return true;
+static void F4MP_OnF4SEMessage(F4SEMessagingInterface::Message* msg) {
+    if (!msg) return;
+    // Cuando el juego esta cargado / los datos listos, arrancamos F4MP.
+    if (msg->type == kMessage_GameDataReady || msg->type == kMessage_GameLoaded) {
+        F4MP_StartInit();
+    }
 }
 
-extern "C" __declspec(dllexport) bool F4SEPlugin_Load(const void* /*f4se*/)
-{
-    // El arranque real de F4MP se dispara desde DllMain (main.cpp) al cargar el DLL.
-    // Aqui no hace falta nada: solo confirmar a F4SE que la carga fue correcta.
+// ---------------------------------------------------------------------------
+//  F4SE llama a esto tras validar la version. Aqui nos registramos.
+// ---------------------------------------------------------------------------
+extern "C" __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4se) {
+    PluginHandle handle = f4se->GetPluginHandle();
+
+    auto* messaging = reinterpret_cast<F4SEMessagingInterface*>(
+        f4se->QueryInterface(kInterface_Messaging));
+
+    if (messaging) {
+        messaging->RegisterListener(handle, "F4SE", F4MP_OnF4SEMessage);
+    } else {
+        // Sin mensajeria disponible: arrancamos directamente (menos ideal).
+        F4MP_StartInit();
+    }
     return true;
 }

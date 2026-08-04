@@ -66,6 +66,9 @@ void Console_Print(const char* fmt, ...) {
     }
 }
 
+#include <atomic>
+static std::atomic<bool> g_initStarted{ false };
+
 DWORD WINAPI Main(LPVOID lpThreadParameter) {
     AllocConsole();
     freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
@@ -97,9 +100,28 @@ DWORD WINAPI Main(LPVOID lpThreadParameter) {
     return TRUE;
 }
 
+// Arranca la inicializacion de F4MP una sola vez (idempotente).
+// La llama el manejador de mensajes de F4SE (F4SEPlugin.cpp) cuando el juego
+// esta listo y, como respaldo para inyeccion/ASI, el watchdog de abajo.
+extern "C" void F4MP_StartInit() {
+    bool expected = false;
+    if (!g_initStarted.compare_exchange_strong(expected, true)) return; // ya iniciado
+    if (auto handle = CreateThread(nullptr, 0, Main, nullptr, 0, nullptr)) {
+        CloseHandle(handle);
+    }
+}
+
 BOOL WINAPI Detach() {
     Network::NetworkClient::GetInstance().Shutdown();
     return TRUE;
+}
+
+// Respaldo para carga por inyeccion / ASI loader (sin F4SE):
+// tras un retardo, si nadie ha iniciado aun, iniciamos nosotros.
+static DWORD WINAPI InitWatchdog(LPVOID) {
+    Sleep(15000);
+    F4MP_StartInit();
+    return 0;
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule,
@@ -108,8 +130,11 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 
     if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(hModule);
-
-        if (auto handle = CreateThread(nullptr, NULL, Main, hModule, NULL, nullptr)) {
+        // IMPORTANTE: no inicializamos nada pesado aqui (no es seguro bajo F4SE,
+        // que carga los plugins muy pronto). Bajo F4SE, el arranque se dispara
+        // al recibir el mensaje de "juego listo" (ver F4SEPlugin.cpp).
+        // Este watchdog solo cubre el caso de inyeccion/ASI sin F4SE.
+        if (auto handle = CreateThread(nullptr, 0, InitWatchdog, nullptr, 0, nullptr)) {
             CloseHandle(handle);
         }
     } else if (ul_reason_for_call == DLL_PROCESS_DETACH && !lpReserved) {
