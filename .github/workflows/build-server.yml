@@ -1,4 +1,5 @@
 # Workflow de compilacion del SERVIDOR (F4MPServer.exe)
+# Usa las dependencias vendidas en el repo (third_party/deps). NO usa vcpkg.
 # Se dispara en push a main (solo si cambia el servidor), al crear un tag "v..." o a mano.
 
 name: Build Server
@@ -9,6 +10,7 @@ on:
       - main
     paths:
       - 'server/**'
+      - 'third_party/**'
       - '.github/workflows/build-server.yml'
     tags:
       - 'v*'
@@ -16,9 +18,6 @@ on:
 
 permissions:
   contents: write
-
-env:
-  VCPKG_TRIPLET: x64-windows
 
 jobs:
   build-server:
@@ -33,13 +32,8 @@ jobs:
         with:
           arch: x64
 
-      - name: Instalar dependencias (vcpkg)
-        shell: pwsh
-        run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install gamenetworkingsockets:$env:VCPKG_TRIPLET spdlog:$env:VCPKG_TRIPLET
-
       - name: Configurar servidor
-        run: cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - name: Compilar servidor
         run: cmake --build server/build
 
@@ -48,7 +42,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item server/build/F4MPServer.exe dist/
-          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/$env:VCPKG_TRIPLET/bin/*.dll" dist/ -ErrorAction SilentlyContinue
+          Copy-Item third_party/deps/x64-windows/bin/*.dll dist/ -ErrorAction SilentlyContinue
 
       - name: Subir artifact
         uses: actions/upload-artifact@v4

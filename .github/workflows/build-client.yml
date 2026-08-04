@@ -1,4 +1,5 @@
 # Workflow de compilacion del CLIENTE (F4MPClient.dll)
+# Usa las dependencias vendidas en el repo (third_party/deps). NO usa vcpkg.
 # Se dispara en push a main (solo si cambia el cliente), al crear un tag "v..." o a mano.
 
 name: Build Client
@@ -9,6 +10,7 @@ on:
       - main
     paths:
       - 'client/**'
+      - 'third_party/**'
       - '.github/workflows/build-client.yml'
     tags:
       - 'v*'
@@ -16,9 +18,6 @@ on:
 
 permissions:
   contents: write
-
-env:
-  VCPKG_TRIPLET: x64-windows
 
 jobs:
   build-client:
@@ -33,13 +32,8 @@ jobs:
         with:
           arch: x64
 
-      - name: Instalar dependencias (vcpkg)
-        shell: pwsh
-        run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install gamenetworkingsockets:$env:VCPKG_TRIPLET spdlog:$env:VCPKG_TRIPLET
-
       - name: Configurar cliente
-        run: cmake -S client -B client/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+        run: cmake -S client -B client/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - name: Compilar cliente
         run: cmake --build client/build
 
@@ -49,7 +43,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item client/build/F4MPClient.dll   dist/
           Copy-Item client/redist/steam_api64.dll dist/
-          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/$env:VCPKG_TRIPLET/bin/*.dll" dist/ -ErrorAction SilentlyContinue
+          Copy-Item third_party/deps/x64-windows/bin/*.dll dist/ -ErrorAction SilentlyContinue
 
       - name: Subir artifact
         uses: actions/upload-artifact@v4
