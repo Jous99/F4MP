@@ -19,7 +19,7 @@ include_directories(${EXECUTABLE}
 	${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-file(GLOB SourceFiles 
+file(GLOB SourceFiles LIST_DIRECTORIES false
 	${SRC_DIR}/*
 	${SRC_DIR}/Utils/*
 	${SRC_DIR}/ThirdParty/*

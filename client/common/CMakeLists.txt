@@ -3,7 +3,7 @@ set(PROJ Common)
 set(SRC_DIR ./src)
 set(INCLUDE_DIR ./include)
 
-file(GLOB SOURCE_FILES
+file(GLOB SOURCE_FILES LIST_DIRECTORIES false
         ${SRC_DIR}/*
         )
 

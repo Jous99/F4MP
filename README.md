@@ -1,110 +1,117 @@
-# F4MP - Fallout 4 Multiplayer
+# F4MP — Fallout 4 Multiplayer
 
-A multiplayer mod for Fallout 4, ported to work with Next-Gen (1.10.980+) and Anniversary Edition (1.11.x).
+A multiplayer mod for **Fallout 4**, revived and ported to work with **Next-Gen (1.10.980+)** and **Anniversary Edition (1.11.x)**.
 
-> **Original project was deprecated in 2021.** This is a revived and improved version.
+> The original project was deprecated in 2021. This is a revived and improved version.
 
-## Changes from Original
+---
 
-| Feature | Original | Ported |
-|---------|----------|--------|
+## Project status
+
+⚠️ **Work in progress — not yet playable.** The networking layer and in-game UI are built, but two things are still missing before players can actually see each other:
+
+1. **Networking bugs** in the connection handshake (see `CHECKLIST.md`) mean a client cannot fully connect yet.
+2. **No game integration**: the client does not yet read the local player's position or render other players in the world.
+
+See **[CHECKLIST.md](CHECKLIST.md)** for the full, up-to-date roadmap and what's done vs. pending.
+
+| Area | State |
+|------|-------|
+| DLL injection + D3D11/ImGui overlay | ✅ Working |
+| Pattern scanning (version-independent addresses) | ✅ Working |
+| Server: listen socket, client map, chat/position relay | ✅ Working |
+| Connection handshake (client ↔ server) | 🟡 Buggy |
+| In-game player sync (see/move other players) | ⬜ Not started |
+
+## What changed from the original
+
+| Feature | Original | This port |
+|---------|----------|-----------|
 | Game version | Pre-Next-Gen (1.10.163) | Next-Gen 1.10.980+ / Anniversary 1.11.x |
-| Address resolution | Hardcoded offsets (breaks on update) | Pattern scanning (version-independent) |
-| Networking | Headers present, zero code | Full GameNetworkingSockets implementation |
-| Server | Empty stubs (Start/Update return nothing) | Functional with connection management, broadcast, chat |
-| Print hook | Bug: printed va_list pointer | Fixed: properly formats and prints strings |
-| Server fork() | Syntax error: `pid_t Pid fork();` | Fixed: `pid_t pid = fork();` |
-| Server main loop | `UMain()` returns 0 immediately | Full game loop with 30 tick rate |
-| ImGui | 1.67 WIP demo window only | Integrated menu with connect/disconnect UI |
-| CMake | `dxgi.dll` linked as lib | Fixed to `dxgi.lib` |
+| Address resolution | Hardcoded offsets (break on update) | Pattern scanning (version-independent) |
+| Networking | Headers only, zero code | GameNetworkingSockets implementation |
+| Server | Empty stubs | Connection management, broadcast, chat |
+| Print hook | Printed the `va_list` pointer | Formats and prints strings correctly |
+| Server `fork()` | Syntax error | Fixed |
+| Server main loop | Returned immediately | 30-tick game loop |
+| ImGui | 1.67 demo window only | Menu with connect/disconnect UI |
 
 ## Building
 
-### Prerequisites
+You don't have to build it yourself — every tagged release (`v*`) is compiled automatically by GitHub Actions and the binaries are attached under **[Releases](../../releases)**. To build locally:
 
-- Visual Studio 2019/2022 with C++ desktop development
-- CMake 3.7+
-- All dependencies are included in `lib/` and `include/`
+**Prerequisites**
 
-### Client
+- Visual Studio 2019/2022 with the "Desktop development with C++" workload
+- CMake 3.9+
+- All third-party dependencies are already included in `lib/` and `include/`
 
-1. Open Visual Studio
-2. File -> Open -> CMake -> select `client/CMakeLists.txt`
-3. Build -> Build All (x64-Release)
-4. Output: `out/build/x64-Release/F4MPClient.dll`
+**Client**
 
-### Server
+```bash
+cmake -S client -B client/build -G "Visual Studio 17 2022" -A x64
+cmake --build client/build --config RelWithDebInfo
+# Output: client/build/RelWithDebInfo/F4MPClient.dll
+```
 
-1. Open Visual Studio
-2. File -> Open -> CMake -> select `server/CMakeLists.txt`
-3. Build -> Build All (x64-Release)
-4. Output: `out/build/x64-Release/F4MPServer.exe`
+**Server**
+
+```bash
+cmake -S server -B server/build -G "Visual Studio 17 2022" -A x64
+cmake --build server/build --config RelWithDebInfo
+# Output: server/build/RelWithDebInfo/F4MPServer.exe
+```
+
+You can also open either `CMakeLists.txt` directly in Visual Studio and build the `x64-Release` configuration.
 
 ## Installation
 
-### Client
+**Client**
 
-1. Place `F4MPClient.dll` in your Fallout 4 game directory
-2. Inject using your preferred DLL injector, or set up as a load library mod
-3. Launch Fallout 4
-4. Press **Delete** to toggle the F4MP menu
+1. Place `F4MPClient.dll` (and `steam_api64.dll`) in your Fallout 4 game directory.
+2. Load it with your preferred DLL injector.
+3. Launch Fallout 4.
+4. Press **Delete** to toggle the F4MP menu.
 
-### Server
+**Server**
 
-1. Run `F4MPServer.exe`
-2. A `config.json` will be created automatically on first run
-3. Edit `config.json` to change port, player limit, etc.
-4. Default: `127.0.0.1:7779`
+1. Run `F4MPServer.exe`.
+2. A `config.json` is created automatically on first run.
+3. Edit `config.json` to change IP, port, player limit, etc.
+4. Default: `127.0.0.1:7779`.
 
 ## Usage
 
-1. Start the server first
-2. Launch Fallout 4 with the client DLL loaded
-3. Press **Delete** to open the F4MP menu
-4. Enter server address and click **Connect**
-5. Status indicator shows connection state
+1. Start the server.
+2. Launch Fallout 4 with the client DLL loaded.
+3. Press **Delete** to open the menu.
+4. Enter the server address and click **Connect**.
 
 ## Architecture
 
-### Client
-- **DLL injection** into Fallout4.exe
-- **D3D11 Present hook** via Microsoft Detours for ImGui overlay
-- **Pattern scanning** to resolve game addresses at runtime (no hardcoded offsets)
-- **GameNetworkingSockets** for reliable UDP networking
-- **ImGui** for in-game UI
+**Client** — DLL injected into `Fallout4.exe`; hooks `IDXGISwapChain::Present` (D3D11) via Microsoft Detours to draw a Dear ImGui overlay; resolves game addresses at runtime with pattern scanning; talks to the server over Valve's GameNetworkingSockets.
 
-### Server
-- **Standalone executable** using GameNetworkingSockets
-- **Listen socket** for accepting client connections
-- **Message routing** - broadcasts player positions, chat, etc.
-- **Client management** - tracks connected players, handles disconnects
+**Server** — standalone executable using GameNetworkingSockets; opens a listen socket, tracks connected clients, and routes messages (positions, chat) between them.
 
-### Protocol
-Messages use a binary format:
+**Protocol** — binary messages:
+
 ```
 [MessageHeader: type(2) + size(4) + timestamp(8)]
 [Payload: variable]
 ```
 
-Message types: ConnectionRequest, ConnectionAccepted, PlayerPosition, ChatMessage, DamageDealt, etc.
+Message types: `ConnectionRequest`, `ConnectionAccepted`, `PlayerPosition`, `ChatMessage`, `DamageDealt`, and more.
 
-## Known Issues
+## Known limitations
 
-- Pattern signatures may need updating for future game patches
-- No entity/NPC synchronization yet (players only)
-- No inventory or quest synchronization
-- Anti-cheat not implemented
+- Pattern signatures may need updating for future game patches.
+- No entity/NPC, inventory, or quest synchronization yet.
+- No anti-cheat.
 
 ## License
 
-Original F4MP code: Public Domain (Unlicense)
-This port: Same license as original
+Original F4MP code: Public Domain (Unlicense). This port keeps the same license. See `LICENSE`.
 
 ## Credits
 
-- Original F4MP team (Alin Octavian, Benjamin Kyd)
-- Microsoft Detours
-- Valve GameNetworkingSockets
-- Dear ImGui (ocornut)
-- spdlog (gabime)
-- nlohmann/json
+Original F4MP team (Alin Octavian, Benjamin Kyd) · Microsoft Detours · Valve GameNetworkingSockets · Dear ImGui (ocornut) · spdlog (gabime) · nlohmann/json.
