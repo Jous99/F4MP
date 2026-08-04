@@ -1,6 +1,7 @@
 #include "NetworkClient.h"
 #include <spdlog/spdlog.h>
 #include <chrono>
+#include <cstring>
 
 namespace Network {
 
@@ -15,7 +16,7 @@ bool NetworkClient::Initialize() {
     spdlog::info("[Network] Initializing GameNetworkingSockets...");
 
     SteamNetworkingErrMsg errMsg;
-    if (!SteamNetworkingSockets_Init(nullptr, errMsg)) {
+    if (!GameNetworkingSockets_Init(nullptr, errMsg)) {
         spdlog::error("[Network] Failed to init GameNetworkingSockets: {}", errMsg);
         return false;
     }
@@ -28,9 +29,11 @@ bool NetworkClient::Initialize() {
         return false;
     }
 
-    int opt = 1;
-    m_sockets->SetConnectionConfigValueInt(k_HSteamNetConnection_Invalid,
-        k_ESteamNetworkingConfig_IP_AllowWithoutAuth, opt);
+    // Permitir conexiones IP sin autenticacion de Steam.
+    m_utils->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_IP_AllowWithoutAuth, 1);
+
+    // Registrar el callback global de cambios de estado de conexion.
+    m_utils->SetGlobalCallback_SteamNetConnectionStatusChanged(&NetworkClient::OnConnStatusChangedStatic);
 
     m_initialized = true;
     spdlog::info("[Network] GameNetworkingSockets initialized");
@@ -38,12 +41,12 @@ bool NetworkClient::Initialize() {
 }
 
 void NetworkClient::Shutdown() {
-    if (m_connected) {
+    if (m_connection != k_HSteamNetConnection_Invalid) {
         Disconnect();
     }
 
     if (m_initialized) {
-        SteamNetworkingSockets_Kill();
+        GameNetworkingSockets_Kill();
         m_initialized = false;
     }
 
@@ -53,8 +56,8 @@ void NetworkClient::Shutdown() {
 bool NetworkClient::Connect(const std::string& address, uint16_t port) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (m_connected) {
-        spdlog::warn("[Network] Already connected");
+    if (m_connection != k_HSteamNetConnection_Invalid) {
+        spdlog::warn("[Network] Already connecting/connected");
         return false;
     }
 
@@ -79,8 +82,6 @@ bool NetworkClient::Connect(const std::string& address, uint16_t port) {
 }
 
 void NetworkClient::Disconnect() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     if (m_connection != k_HSteamNetConnection_Invalid) {
         m_sockets->CloseConnection(m_connection, 0, "Disconnecting", false);
         m_connection = k_HSteamNetConnection_Invalid;
@@ -96,11 +97,9 @@ void NetworkClient::Disconnect() {
     spdlog::info("[Network] Disconnected from server");
 }
 
-void NetworkClient::SendMessage(MessageType type, const void* data, uint32_t size) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    if (!m_connected || m_connection == k_HSteamNetConnection_Invalid) {
-        spdlog::warn("[Network] Cannot send: not connected");
+void NetworkClient::SendPacket(MessageType type, const void* data, uint32_t size) {
+    if (m_connection == k_HSteamNetConnection_Invalid) {
+        spdlog::warn("[Network] Cannot send: no connection");
         return;
     }
 
@@ -117,12 +116,20 @@ void NetworkClient::SendMessage(MessageType type, const void* data, uint32_t siz
     }
 
     EResult result = m_sockets->SendMessageToConnection(
-        m_connection, buffer.data(), buffer.size(),
+        m_connection, buffer.data(), (uint32_t)buffer.size(),
         k_nSteamNetworkingSend_Reliable, nullptr);
 
     if (result != k_EResultOK) {
-        spdlog::error("[Network] Failed to send message: {}", result);
+        spdlog::error("[Network] Failed to send message: {}", (int)result);
     }
+}
+
+void NetworkClient::SendConnectionRequest() {
+    ConnectionRequestMsg req{};
+    strncpy(req.playerName, m_playerName.c_str(), sizeof(req.playerName) - 1);
+    req.protocolVersion = PROTOCOL_VERSION;
+    SendPacket(MessageType::ConnectionRequest, &req, sizeof(req));
+    spdlog::info("[Network] Sent connection request as '{}'", m_playerName);
 }
 
 void NetworkClient::SetMessageCallback(std::function<void(const MessageHeader&, const void*)> callback) {
@@ -133,16 +140,50 @@ void NetworkClient::SetConnectionCallback(std::function<void(bool)> callback) {
     m_connectionCallback = std::move(callback);
 }
 
+void NetworkClient::OnConnStatusChangedStatic(SteamNetConnectionStatusChangedCallback_t* info) {
+    GetInstance().OnConnStatusChanged(info);
+}
+
+void NetworkClient::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* info) {
+    switch (info->m_info.m_eState) {
+        case k_ESteamNetworkingConnectionState_Connected:
+            // El socket esta arriba: enviamos el handshake de aplicacion.
+            spdlog::info("[Network] Transport connected, sending handshake...");
+            SendConnectionRequest();
+            break;
+
+        case k_ESteamNetworkingConnectionState_ClosedByPeer:
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
+            spdlog::warn("[Network] Connection closed: {}", info->m_info.m_szEndDebug);
+            if (m_connection != k_HSteamNetConnection_Invalid) {
+                m_sockets->CloseConnection(m_connection, 0, nullptr, false);
+                m_connection = k_HSteamNetConnection_Invalid;
+            }
+            m_connected = false;
+            m_playerId = 0;
+            if (m_connectionCallback) m_connectionCallback(false);
+            break;
+
+        default:
+            break;
+    }
+}
+
 void NetworkClient::PumpMessages() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_initialized) return;
 
-    if (!m_initialized || m_connection == k_HSteamNetConnection_Invalid) return;
+    // 1. Deja que GNS procese estados de conexion (dispara OnConnStatusChanged).
+    m_sockets->RunCallbacks();
 
-    SteamNetworkingMessage_t* msg = nullptr;
-    int msgCount = m_sockets->ReceiveMessagesOnConnection(m_connection, &msg, 1, 0);
+    if (m_connection == k_HSteamNetConnection_Invalid) return;
 
-    while (msgCount > 0 && msg) {
-        if (msg->m_cbSize >= sizeof(MessageHeader)) {
+    // 2. Procesa mensajes entrantes.
+    SteamNetworkingMessage_t* msgs[16];
+    int msgCount = m_sockets->ReceiveMessagesOnConnection(m_connection, msgs, 16);
+
+    for (int i = 0; i < msgCount; ++i) {
+        SteamNetworkingMessage_t* msg = msgs[i];
+        if (msg->m_cbSize >= (int)sizeof(MessageHeader)) {
             const auto* header = reinterpret_cast<const MessageHeader*>(msg->m_pData);
             const void* payload = reinterpret_cast<const uint8_t*>(msg->m_pData) + sizeof(MessageHeader);
 
@@ -159,17 +200,6 @@ void NetworkClient::PumpMessages() {
             } else if (m_messageCallback) {
                 m_messageCallback(*header, payload);
             }
-        }
-        msg->Release();
-        msgCount = m_sockets->ReceiveMessagesOnConnection(m_connection, &msg, 1, 0);
-    }
-
-    SteamNetConnectionStatusChangedCallback_t statusChange;
-    while (m_sockets->ReceiveMessagesOnConnection(m_connection, &msg, 1, 0) > 0 && msg) {
-        if (msg->m_cbSize >= sizeof(MessageHeader)) {
-            const auto* header = reinterpret_cast<const MessageHeader*>(msg->m_pData);
-            const void* payload = reinterpret_cast<const uint8_t*>(msg->m_pData) + sizeof(MessageHeader);
-            if (m_messageCallback) m_messageCallback(*header, payload);
         }
         msg->Release();
     }

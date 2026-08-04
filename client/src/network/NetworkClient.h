@@ -6,9 +6,9 @@
 #include <functional>
 #include <mutex>
 
-#include <steamnetworkingsockets/steamnetworkingsockets.h>
-#include <steamnetworkingsockets/isteamnetworkingsockets.h>
-#include <steamnetworkingsockets/isteamnetworkingutils.h>
+#include <steam/steamnetworkingsockets.h>
+#include <steam/isteamnetworkingsockets.h>
+#include <steam/isteamnetworkingutils.h>
 
 namespace Network {
 
@@ -87,11 +87,16 @@ public:
 
     bool IsConnected() const { return m_connected; }
 
-    void SendMessage(MessageType type, const void* data, uint32_t size);
+    void SetPlayerName(const std::string& name) { m_playerName = name; }
+
+    // OJO: no se llama SendMessage a proposito: en Windows <windows.h>
+    // define SendMessage como una macro y romperia la compilacion.
+    void SendPacket(MessageType type, const void* data, uint32_t size);
 
     void SetMessageCallback(std::function<void(const MessageHeader&, const void*)> callback);
     void SetConnectionCallback(std::function<void(bool connected)> callback);
 
+    // Llamar cada frame: procesa callbacks de GNS y mensajes entrantes.
     void PumpMessages();
 
     uint32_t GetPlayerId() const { return m_playerId; }
@@ -99,14 +104,21 @@ public:
 private:
     NetworkClient() = default;
 
+    // Trampolin estatico para el callback global de GNS -> instancia singleton.
+    static void OnConnStatusChangedStatic(SteamNetConnectionStatusChangedCallback_t* info);
+    void OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* info);
+
+    void SendConnectionRequest();
+
     ISteamNetworkingSockets* m_sockets = nullptr;
     ISteamNetworkingUtils* m_utils = nullptr;
 
     HSteamNetConnection m_connection = k_HSteamNetConnection_Invalid;
 
-    bool m_connected = false;
+    bool m_connected = false;      // true cuando el servidor acepta (ConnectionAccepted)
     bool m_initialized = false;
     uint32_t m_playerId = 0;
+    std::string m_playerName = "Wastelander";
 
     std::mutex m_mutex;
 

@@ -1,5 +1,5 @@
 # Workflow de compilacion de F4MP (cliente + servidor)
-# Corre en GitHub Actions, sobre un runner de Windows con MSVC.
+# Corre en GitHub Actions, sobre un runner de Windows con MSVC + vcpkg.
 # Se dispara solo en cada push a main, al crear un tag "v..." o a mano.
 
 name: Build
@@ -12,55 +12,62 @@ on:
       - 'v*'          # y publica un Release cuando marcas un tag (v0.3, v1.0, ...)
   workflow_dispatch:  # boton para lanzarlo a mano desde la pestana Actions
 
-# Necesario para que el paso de Release pueda crear el release y subir los archivos
 permissions:
   contents: write
 
+env:
+  # GameNetworkingSockets y spdlog se instalan con vcpkg (ya viene en el runner)
+  VCPKG_TRIPLET: x64-windows
+
 jobs:
   build:
-    runs-on: windows-latest   # runner de Windows de GitHub
+    runs-on: windows-latest
 
     steps:
-      # 1. Descarga tu codigo (incluye las libs .lib ya commiteadas)
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Prepara el entorno de MSVC (cl.exe) sin depender del generador de Visual Studio
+      # Prepara el entorno de MSVC (cl.exe) sin depender del generador de Visual Studio
       - name: Preparar MSVC (x64)
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      # 3. Compila el CLIENTE (F4MPClient.dll) con Ninja
+      # Instala las dependencias con vcpkg (cacheado entre corridas por GitHub)
+      - name: Instalar dependencias (vcpkg)
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install gamenetworkingsockets:$env:VCPKG_TRIPLET spdlog:$env:VCPKG_TRIPLET
+
+      # Compila el CLIENTE (F4MPClient.dll)
       - name: Configurar cliente
-        run: cmake -S client -B client/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        run: cmake -S client -B client/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
       - name: Compilar cliente
         run: cmake --build client/build
 
-      # 4. Compila el SERVIDOR (F4MPServer.exe) con Ninja
+      # Compila el SERVIDOR (F4MPServer.exe)
       - name: Configurar servidor
-        run: cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        run: cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
       - name: Compilar servidor
         run: cmake --build server/build
 
-      # 5. Junta todos los binarios en una carpeta "dist"
-      #    (con Ninja el binario queda en la raiz de build/, sin subcarpeta RelWithDebInfo)
+      # Junta binarios + DLLs de runtime (GameNetworkingSockets.dll y sus dependencias)
       - name: Reunir binarios
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item client/build/F4MPClient.dll   dist/
           Copy-Item client/redist/steam_api64.dll dist/
           Copy-Item server/build/F4MPServer.exe   dist/
+          # DLLs de runtime que instalo vcpkg (GameNetworkingSockets + OpenSSL/abseil/protobuf, etc.)
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT/installed/$env:VCPKG_TRIPLET/bin/*.dll" dist/ -ErrorAction SilentlyContinue
 
-      # 6. Guarda los binarios como "artifact" (descargable desde la corrida)
       - name: Subir artifact
         uses: actions/upload-artifact@v4
         with:
           name: F4MP-binaries
           path: dist/
 
-      # 7. Si fue un tag, crea un Release y adjunta los binarios
       - name: Publicar release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

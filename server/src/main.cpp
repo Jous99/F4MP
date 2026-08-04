@@ -6,6 +6,8 @@
 #include <csignal>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/async.h>
 
 #include "ThirdParty/nlohmann/json.hpp"
 #include "Config.hpp"
@@ -38,6 +40,8 @@ int UMain() {
         auto file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("file_logger", Config::getInstance().LogLocation);
         spdlog::set_default_logger(file_logger);
     }
+
+    GameServer::GetInstance().SetMaxPlayers(Config::getInstance().PlayerLimit);
 
     if (!GameServer::GetInstance().Initialize(port)) {
         spdlog::error("[Server] Failed to initialize server on port {}", port);

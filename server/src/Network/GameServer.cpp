@@ -14,7 +14,7 @@ bool GameServer::Initialize(uint16_t port) {
     spdlog::info("[Server] Initializing on port {}", port);
 
     SteamNetworkingErrMsg errMsg;
-    if (!SteamNetworkingSockets_Init(nullptr, errMsg)) {
+    if (!GameNetworkingSockets_Init(nullptr, errMsg)) {
         spdlog::error("[Server] Failed to init GameNetworkingSockets: {}", errMsg);
         return false;
     }
@@ -25,22 +25,31 @@ bool GameServer::Initialize(uint16_t port) {
         return false;
     }
 
+    // Permitir conexiones IP sin autenticacion de Steam.
+    SteamNetworkingUtils()->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_IP_AllowWithoutAuth, 1);
+
+    // Registrar el callback global de cambios de estado de conexion.
+    SteamNetworkingUtils()->SetGlobalCallback_SteamNetConnectionStatusChanged(&GameServer::OnConnStatusChangedStatic);
+
     SteamNetworkingIPAddr bindAddr;
     bindAddr.Clear();
     bindAddr.m_port = port;
 
-    int opt = 1;
-    m_sockets->SetConnectionConfigValueInt(k_HSteamNetConnection_Invalid,
-        k_ESteamNetworkingConfig_IP_AllowWithoutAuth, opt);
-
     m_listenSocket = m_sockets->CreateListenSocketIP(bindAddr, 0, nullptr);
     if (m_listenSocket == k_HSteamListenSocket_Invalid) {
         spdlog::error("[Server] Failed to create listen socket on port {}", port);
-        SteamNetworkingSockets_Kill();
+        GameNetworkingSockets_Kill();
         return false;
     }
 
-    spdlog::info("[Server] Listening on port {}", port);
+    m_pollGroup = m_sockets->CreatePollGroup();
+    if (m_pollGroup == k_HSteamNetPollGroup_Invalid) {
+        spdlog::error("[Server] Failed to create poll group");
+        GameNetworkingSockets_Kill();
+        return false;
+    }
+
+    spdlog::info("[Server] Listening on port {} (max players: {})", port, m_maxPlayers);
     m_initialized = true;
     m_running = true;
     return true;
@@ -48,11 +57,6 @@ bool GameServer::Initialize(uint16_t port) {
 
 void GameServer::Shutdown() {
     m_running = false;
-
-    if (m_listenSocket != k_HSteamListenSocket_Invalid) {
-        m_sockets->CloseListenSocket(m_listenSocket);
-        m_listenSocket = k_HSteamListenSocket_Invalid;
-    }
 
     {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
@@ -62,8 +66,18 @@ void GameServer::Shutdown() {
         m_clients.clear();
     }
 
+    if (m_pollGroup != k_HSteamNetPollGroup_Invalid) {
+        m_sockets->DestroyPollGroup(m_pollGroup);
+        m_pollGroup = k_HSteamNetPollGroup_Invalid;
+    }
+
+    if (m_listenSocket != k_HSteamListenSocket_Invalid) {
+        m_sockets->CloseListenSocket(m_listenSocket);
+        m_listenSocket = k_HSteamListenSocket_Invalid;
+    }
+
     if (m_initialized) {
-        SteamNetworkingSockets_Kill();
+        GameNetworkingSockets_Kill();
         m_initialized = false;
     }
 
@@ -89,8 +103,9 @@ void GameServer::Run() {
 }
 
 void GameServer::Update() {
+    // Procesa estados de conexion (dispara OnConnStatusChanged) y mensajes.
+    m_sockets->RunCallbacks();
     ProcessMessages();
-    HandleConnectionStatusChanges();
 }
 
 uint32_t GameServer::GetPlayerCount() const {
@@ -125,7 +140,15 @@ void GameServer::HandleConnectionRequest(HSteamNetConnection conn, const Connect
     acceptMsg.currentPlayers = GetPlayerCount();
     acceptMsg.maxPlayers = m_maxPlayers;
 
-    m_sockets->SendMessageToConnection(conn, &acceptMsg, sizeof(acceptMsg),
+    // Enviamos el ConnectionAccepted con su cabecera para que el cliente lo entienda.
+    MessageHeader header;
+    header.type = MessageType::ConnectionAccepted;
+    header.size = sizeof(MessageHeader) + sizeof(acceptMsg);
+    header.timestamp = 0;
+    std::vector<uint8_t> buffer(header.size);
+    memcpy(buffer.data(), &header, sizeof(MessageHeader));
+    memcpy(buffer.data() + sizeof(MessageHeader), &acceptMsg, sizeof(acceptMsg));
+    m_sockets->SendMessageToConnection(conn, buffer.data(), (uint32_t)buffer.size(),
         k_nSteamNetworkingSend_Reliable, nullptr);
 
     spdlog::info("[Server] Player '{}' connected (ID: {})", client.name.c_str(), client.id);
@@ -178,10 +201,9 @@ void GameServer::BroadcastMessage(MessageType type, const void* data, uint32_t s
         memcpy(buffer.data() + sizeof(MessageHeader), data, size);
     }
 
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
     for (const auto& [conn, client] : m_clients) {
         if (client.isConnected && client.id != excludeId) {
-            m_sockets->SendMessageToConnection(conn, buffer.data(), buffer.size(),
+            m_sockets->SendMessageToConnection(conn, buffer.data(), (uint32_t)buffer.size(),
                 k_nSteamNetworkingSend_Reliable, nullptr);
         }
     }
@@ -204,7 +226,7 @@ void GameServer::SendMessageToClient(uint32_t clientId, MessageType type, const 
                 memcpy(buffer.data() + sizeof(MessageHeader), data, size);
             }
 
-            m_sockets->SendMessageToConnection(conn, buffer.data(), buffer.size(),
+            m_sockets->SendMessageToConnection(conn, buffer.data(), (uint32_t)buffer.size(),
                 k_nSteamNetworkingSend_Reliable, nullptr);
             break;
         }
@@ -212,11 +234,12 @@ void GameServer::SendMessageToClient(uint32_t clientId, MessageType type, const 
 }
 
 void GameServer::ProcessMessages() {
-    SteamNetworkingMessage_t* msg = nullptr;
-    int msgCount = m_sockets->ReceiveMessagesOnListenSocket(m_listenSocket, &msg, 1, 0);
+    SteamNetworkingMessage_t* msgs[32];
+    int msgCount = m_sockets->ReceiveMessagesOnPollGroup(m_pollGroup, msgs, 32);
 
-    while (msgCount > 0 && msg) {
-        if (msg->m_cbSize >= sizeof(MessageHeader)) {
+    for (int i = 0; i < msgCount; ++i) {
+        SteamNetworkingMessage_t* msg = msgs[i];
+        if (msg->m_cbSize >= (int)sizeof(MessageHeader)) {
             const auto* header = reinterpret_cast<const MessageHeader*>(msg->m_pData);
             const void* payload = reinterpret_cast<const uint8_t*>(msg->m_pData) + sizeof(MessageHeader);
 
@@ -236,41 +259,49 @@ void GameServer::ProcessMessages() {
             }
         }
         msg->Release();
-        msgCount = m_sockets->ReceiveMessagesOnListenSocket(m_listenSocket, &msg, 1, 0);
     }
 }
 
-void GameServer::HandleConnectionStatusChanges() {
-    SteamNetConnectionStatusChangedCallback_t statusChange;
-    while (m_sockets->ReceiveMessagesOnListenSocket(m_listenSocket, &statusChange, 1, 0) > 0) {
-        switch (statusChange.m_info.m_eState) {
-            case k_ESteamNetworkingConnectionState_Connecting:
-                spdlog::info("[Server] New connection attempt");
-                m_sockets->AcceptConnection(statusChange.m_hConn);
-                break;
+void GameServer::OnConnStatusChangedStatic(SteamNetConnectionStatusChangedCallback_t* info) {
+    GetInstance().OnConnStatusChanged(info);
+}
 
-            case k_ESteamNetworkingConnectionState_ClosedByPeer:
-            case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-                std::lock_guard<std::mutex> lock(m_clientsMutex);
-                auto it = m_clients.find(statusChange.m_hConn);
-                if (it != m_clients.end()) {
-                    spdlog::info("[Server] Player '{}' disconnected", it->second.name.c_str());
-
-                    ChatMessageMsg leaveMsg{};
-                    leaveMsg.senderId = 0;
-                    snprintf(leaveMsg.message, sizeof(leaveMsg.message), "%s has left the wasteland", it->second.name.c_str());
-                    leaveMsg.channel = 0;
-
-                    uint32_t playerId = it->second.id;
-                    m_clients.erase(it);
-
-                    BroadcastMessage(MessageType::ChatMessage, &leaveMsg, sizeof(leaveMsg), playerId);
-                }
+void GameServer::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* info) {
+    switch (info->m_info.m_eState) {
+        case k_ESteamNetworkingConnectionState_Connecting: {
+            // Nueva conexion entrante: aceptar y meterla en el poll group.
+            if (m_sockets->AcceptConnection(info->m_hConn) != k_EResultOK) {
+                m_sockets->CloseConnection(info->m_hConn, 0, nullptr, false);
+                spdlog::warn("[Server] Failed to accept connection");
                 break;
             }
-
-            default:
-                break;
+            m_sockets->SetConnectionPollGroup(info->m_hConn, m_pollGroup);
+            spdlog::info("[Server] Connection accepted, waiting for handshake");
+            break;
         }
+
+        case k_ESteamNetworkingConnectionState_ClosedByPeer:
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+            std::lock_guard<std::mutex> lock(m_clientsMutex);
+            auto it = m_clients.find(info->m_hConn);
+            if (it != m_clients.end()) {
+                spdlog::info("[Server] Player '{}' disconnected", it->second.name.c_str());
+
+                ChatMessageMsg leaveMsg{};
+                leaveMsg.senderId = 0;
+                snprintf(leaveMsg.message, sizeof(leaveMsg.message), "%s has left the wasteland", it->second.name.c_str());
+                leaveMsg.channel = 0;
+
+                uint32_t playerId = it->second.id;
+                m_clients.erase(it);
+
+                BroadcastMessage(MessageType::ChatMessage, &leaveMsg, sizeof(leaveMsg), playerId);
+            }
+            m_sockets->CloseConnection(info->m_hConn, 0, nullptr, false);
+            break;
+        }
+
+        default:
+            break;
     }
 }

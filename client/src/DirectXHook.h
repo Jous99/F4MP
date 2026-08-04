@@ -106,6 +106,8 @@ namespace Hooks {
         }
 
         void Render() {
+            // Procesa la red cada frame (callbacks de conexion + mensajes entrantes).
+            Network::NetworkClient::GetInstance().PumpMessages();
             Imgui_Render_Impl();
         }
 
@@ -128,14 +130,17 @@ namespace Hooks {
         void RenderMenu() {
             ImGui::Begin("F4MP Menu");
 
+            static char playerName[64] = "Wastelander";
             static char serverAddr[64] = "127.0.0.1";
             static int serverPort = 7779;
 
+            ImGui::InputText("Player Name", playerName, sizeof(playerName));
             ImGui::InputText("Server Address", serverAddr, sizeof(serverAddr));
             ImGui::InputInt("Server Port", &serverPort);
 
             if (ImGui::Button("Connect")) {
                 spdlog::info("[Network] Connecting to {}:{}", serverAddr, serverPort);
+                Network::NetworkClient::GetInstance().SetPlayerName(playerName);
                 Network::NetworkClient::GetInstance().Connect(serverAddr, static_cast<uint16_t>(serverPort));
             }
             ImGui::SameLine();

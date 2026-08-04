@@ -13,12 +13,12 @@ Leyenda: ✅ hecho · 🟡 parcial / con bugs · ⬜ pendiente
 - [x] Hook de la consola del juego (`Console::Print`)
 - [x] Hook de DirectX 11 (`IDXGISwapChain::Present`)
 - [x] Menú ImGui (abrir con **Supr**), campos IP/puerto, botones Connect/Disconnect y overlay de estado
-- [x] `NetworkClient`: wrapper de GameNetworkingSockets (Init/Connect/Disconnect/SendMessage/callbacks)
-- [ ] 🟡 Llamar a `PumpMessages()` cada frame o en un hilo de red *(hoy no se llama nunca)*
-- [ ] 🟡 Enviar `ConnectionRequest` con el nombre del jugador al conectar *(el handshake no se completa)*
-- [ ] 🟡 Llamar a `RunCallbacks()` periódicamente *(GNS lo necesita para avanzar la conexión)*
-- [ ] 🟡 Detectar cambios de estado por callback, no por `ReceiveMessages` *(implementación actual incorrecta)*
-- [ ] Campo de **nombre de jugador** en el menú
+- [x] `NetworkClient`: wrapper de GameNetworkingSockets (Init/Connect/Disconnect/SendPacket/callbacks)
+- [x] Llamar a `PumpMessages()` cada frame (en el hook de render)
+- [x] Enviar `ConnectionRequest` con el nombre del jugador al conectar
+- [x] Llamar a `RunCallbacks()` periódicamente
+- [x] Detectar cambios de estado por callback (`SetGlobalCallback_SteamNetConnectionStatusChanged`)
+- [x] Campo de **nombre de jugador** en el menú
 - [ ] Leer la posición/rotación del jugador local desde la memoria del juego
 - [ ] Crear y mover los actores de los jugadores remotos en el mundo
 - [ ] Interpolación de jugadores remotos (movimiento suave)
@@ -32,8 +32,8 @@ Leyenda: ✅ hecho · 🟡 parcial / con bugs · ⬜ pendiente
 - [x] Relay de chat y de posición entre clientes
 - [x] Bucle principal a 30 ticks
 - [x] Señales (Ctrl+C), stub de servicio Windows y daemon en Linux
-- [ ] 🟡 Aceptar conexiones vía callback + `RunCallbacks()` *(hoy usa `ReceiveMessages`, incorrecto)*
-- [ ] Usar `player-limit` del `config.json` en vez del `MAX_PLAYERS` fijo
+- [x] Aceptar conexiones vía callback + poll groups + `RunCallbacks()`
+- [x] Usar `player-limit` del `config.json` en vez del `MAX_PLAYERS` fijo
 - [ ] Handlers de rotación, animaciones y daño
 - [ ] Lista de baneos funcional
 - [ ] Sincronización de NPCs / entidades del mundo

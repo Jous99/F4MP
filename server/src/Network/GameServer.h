@@ -8,9 +8,9 @@
 #include <mutex>
 #include <chrono>
 
-#include <steamnetworkingsockets/steamnetworkingsockets.h>
-#include <steamnetworkingsockets/isteamnetworkingsockets.h>
-#include <steamnetworkingsockets/isteamnetworkingutils.h>
+#include <steam/steamnetworkingsockets.h>
+#include <steam/isteamnetworkingsockets.h>
+#include <steam/isteamnetworkingutils.h>
 
 enum class MessageType : uint16_t {
     Invalid = 0,
@@ -100,6 +100,8 @@ public:
     bool IsRunning() const { return m_running; }
     uint32_t GetPlayerCount() const;
 
+    void SetMaxPlayers(uint32_t n) { if (n > 0) m_maxPlayers = n; }
+
 private:
     GameServer() = default;
 
@@ -111,10 +113,14 @@ private:
     void SendMessageToClient(uint32_t clientId, MessageType type, const void* data, uint32_t size);
 
     void ProcessMessages();
-    void HandleConnectionStatusChanges();
+
+    // Callback global de GNS -> instancia singleton.
+    static void OnConnStatusChangedStatic(SteamNetConnectionStatusChangedCallback_t* info);
+    void OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* info);
 
     ISteamNetworkingSockets* m_sockets = nullptr;
     HSteamListenSocket m_listenSocket = k_HSteamListenSocket_Invalid;
+    HSteamNetPollGroup m_pollGroup = k_HSteamNetPollGroup_Invalid;
 
     std::unordered_map<HSteamNetConnection, ClientInfo> m_clients;
     std::mutex m_clientsMutex;

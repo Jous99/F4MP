@@ -21,7 +21,9 @@ add_definitions(-DGIT_VERSION="${GIT_REV}")
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M")
 add_definitions(-DBUILD_TIME="${BUILD_TIME}")
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+# --- Dependencias via vcpkg ---
+find_package(GameNetworkingSockets CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 # --- Fuentes reales del servidor ---
 # (Se excluye a proposito el codigo legacy: Server.cpp/.hpp y Logger.cpp/.hpp)
@@ -30,11 +32,10 @@ add_executable(F4MPServer
     src/Network/GameServer.cpp
 )
 
-# --- Librerias ---
 target_link_libraries(F4MPServer
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/GameNetworkingSockets_s.lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/spdlogd.lib
-    ws2_32      # Winsock (lo necesita GameNetworkingSockets)
-    crypt32     # Cifrado (lo necesita GameNetworkingSockets)
-    advapi32    # Servicios de Windows (StartServiceCtrlDispatcher en main.cpp)
+    GameNetworkingSockets::GameNetworkingSockets
+    spdlog::spdlog
+    ws2_32
+    crypt32
+    advapi32
 )
