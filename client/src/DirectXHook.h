@@ -22,6 +22,15 @@ extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam
 namespace Hooks {
     namespace DirectX {
 
+        // Declaraciones adelantadas: estas funciones se definen mas abajo,
+        // pero se usan antes (p.ej. Init llama a Pre_Render y Render).
+        void Init();
+        void Pre_Render(IDXGISwapChain* swapChain);
+        void Render();
+        void Imgui_Render_Impl();
+        void RenderMenu();
+        void RenderOverlay();
+
         extern LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             ImGuiIO& io = ImGui::GetIO();
             POINT mPos;
