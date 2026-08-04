@@ -1,5 +1,6 @@
 .vs/
 .vscode/
 build/
+.deps/
 /web
 web/
