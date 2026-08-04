@@ -1,60 +1,70 @@
 @echo off
 setlocal
 title F4MP - Compilar Servidor
-
-REM Situarse en la carpeta del repo (donde esta este .bat)
 cd /d "%~dp0"
 
 echo ============================================
-echo   F4MP - Compilando SERVIDOR (F4MPServer.exe)
+echo   F4MP - Compilando SERVIDOR  [F4MPServer.exe]
 echo ============================================
 echo.
+
+REM -- Localizar Visual Studio --
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%VSWHERE%" goto :no_vs
+
+set "VSPATH="
+for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+if not defined VSPATH goto :no_vc
+
+echo Visual Studio: %VSPATH%
+call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
+set "PATH=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+
+where cmake >nul 2>&1
+if errorlevel 1 goto :no_cmake
 
 set "VENDORED=%~dp0third_party\deps\x64-windows"
+if not exist "%VENDORED%\share" goto :no_deps
 
-if exist "%VENDORED%\share" (
-  REM ===== Dependencias vendidas en el repo: compilar SIN vcpkg =====
-  echo Usando dependencias del repo (third_party). No hace falta vcpkg.
-  echo.
-  echo Configurando el proyecto...
-  cmake -S server -B server\build -A x64
-  if errorlevel 1 ( echo [ERROR] Fallo la configuracion de CMake. & pause & exit /b 1 )
-
-) else (
-  REM ===== No hay dependencias vendidas: usar vcpkg =====
-  if not defined VCPKG_ROOT if exist "%~dp0.deps\vcpkg\scripts\buildsystems\vcpkg.cmake" set "VCPKG_ROOT=%~dp0.deps\vcpkg"
-  if not defined VCPKG_ROOT if exist "C:\vcpkg\scripts\buildsystems\vcpkg.cmake" set "VCPKG_ROOT=C:\vcpkg"
-
-  if not defined VCPKG_ROOT (
-    echo [ERROR] No encuentro las dependencias.
-    echo         Ejecuta primero  setup_deps.bat  (solo una vez).
-    pause
-    exit /b 1
-  )
-  echo Usando vcpkg en: %VCPKG_ROOT%
-  echo.
-  "%VCPKG_ROOT%\vcpkg.exe" install gamenetworkingsockets:x64-windows spdlog:x64-windows
-  if errorlevel 1 ( echo [ERROR] Fallo al instalar dependencias. & pause & exit /b 1 )
-  echo.
-  echo Configurando el proyecto...
-  cmake -S server -B server\build -A x64 -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake"
-  if errorlevel 1 ( echo [ERROR] Fallo la configuracion de CMake. & pause & exit /b 1 )
-)
 echo.
+echo Configurando el proyecto...
+cmake -S server -B server\build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+if errorlevel 1 goto :fail_cfg
 
-REM --- Compilar en modo Release ---
+echo.
 echo Compilando...
-cmake --build server\build --config RelWithDebInfo
-if errorlevel 1 ( echo [ERROR] Fallo la compilacion. & pause & exit /b 1 )
+cmake --build server\build
+if errorlevel 1 goto :fail_build
+
+if exist "%VENDORED%\bin" copy /Y "%VENDORED%\bin\*.dll" "server\build\" >nul 2>&1
+
 echo.
-
-REM --- Copiar DLLs de runtime junto al binario ---
-if exist "%VENDORED%\bin" copy /Y "%VENDORED%\bin\*.dll" "server\build\RelWithDebInfo\" >nul 2>&1
-if defined VCPKG_ROOT copy /Y "%VCPKG_ROOT%\installed\x64-windows\bin\*.dll" "server\build\RelWithDebInfo\" >nul 2>&1
-
 echo ============================================
 echo   [OK] Servidor compilado.
-echo   Salida: server\build\RelWithDebInfo\F4MPServer.exe
+echo   Salida: server\build\F4MPServer.exe
 echo ============================================
+goto :end
+
+:no_vs
+echo [ERROR] No encuentro Visual Studio. Instalalo con la carga "Desarrollo para el escritorio con C++".
+goto :end
+:no_vc
+echo [ERROR] Visual Studio no tiene las herramientas de C++ x64.
+goto :end
+:no_cmake
+echo [ERROR] No encuentro CMake. Instala en Visual Studio el componente "Herramientas de CMake para C++".
+goto :end
+:no_deps
+echo [ERROR] Faltan las dependencias en third_party\deps. Descargalas o ejecuta setup_deps.bat.
+goto :end
+:fail_cfg
+echo [ERROR] Fallo la configuracion de CMake. Revisa el texto de arriba.
+goto :end
+:fail_build
+echo [ERROR] Fallo la compilacion. Revisa el texto de arriba.
+goto :end
+
+:end
+echo.
 pause
 endlocal
