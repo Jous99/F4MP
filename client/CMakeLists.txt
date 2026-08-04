@@ -8,8 +8,8 @@ set(SRC_DIR ./src)
 add_definitions(-D_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/resources/")
 
 # --- Dependencias vendidas en el repo (third_party) para no necesitar vcpkg ---
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/deps/x64-windows/share")
-    list(INSERT CMAKE_PREFIX_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/deps/x64-windows")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/win-x64/share")
+    list(INSERT CMAKE_PREFIX_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/win-x64")
     message(STATUS "F4MP: usando dependencias de third_party/deps (sin vcpkg)")
 endif()
 

@@ -9,8 +9,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Dependencias vendidas en el repo (third_party), sin vcpkg.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/deps/x64-windows/share")
-    list(INSERT CMAKE_PREFIX_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/deps/x64-windows")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/win-x64/share")
+    list(INSERT CMAKE_PREFIX_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/win-x64")
 endif()
 
 find_package(GameNetworkingSockets CONFIG REQUIRED)

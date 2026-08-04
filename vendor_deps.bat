@@ -6,7 +6,7 @@ REM Situarse en la carpeta del repo (donde esta este .bat)
 cd /d "%~dp0"
 
 set "SRC=%~dp0.deps\vcpkg\installed\x64-windows"
-set "DST=%~dp0third_party\deps\x64-windows"
+set "DST=%~dp0third_party\win-x64"
 
 echo ==================================================
 echo   F4MP - Vendorizar dependencias en el repo
@@ -36,7 +36,7 @@ if errorlevel 8 (
 echo.
 echo ==================================================
 echo   [OK] Dependencias copiadas a:
-echo   third_party\deps\x64-windows
+echo   third_party\win-x64
 echo.
 echo   Ahora haz commit de la carpeta third_party\ y
 echo   ya podras compilar sin vcpkg (los .bat lo detectan

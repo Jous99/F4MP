@@ -73,29 +73,49 @@ DWORD WINAPI Main(LPVOID lpThreadParameter) {
     AllocConsole();
     freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
     auto console = spdlog::stdout_color_mt("console");
-    auto async_file = spdlog::basic_logger_mt<spdlog::async_factory>("f4mp_logger", "logs/f4mp.txt");
 
-    spdlog::set_default_logger(async_file);
+    // Logger SINCRONO con volcado inmediato: asi 'logs/f4mp.txt' sobrevive
+    // aunque el juego crashee (con el asincrono se perdian las ultimas lineas).
+    auto file = spdlog::basic_logger_mt("f4mp_logger", "logs/f4mp.txt");
+    file->flush_on(spdlog::level::trace);
+    spdlog::set_default_logger(file);
+
     spdlog::get("console")->info("F4MP Console Loaded");
+    spdlog::info("[F4MP] === init: inicio ===");
 
-    if (!ResolveGameAddresses()) {
-        spdlog::warn("[F4MP] Some game addresses could not be resolved. Console printing may not work.");
+    try {
+        spdlog::info("[F4MP] init: resolviendo direcciones del juego (pattern scan)...");
+        if (!ResolveGameAddresses()) {
+            spdlog::warn("[F4MP] Algunas direcciones NO se resolvieron (patrones no encontrados).");
+        }
+
+        spdlog::info("[F4MP] init: enganchando DirectX (D3D11 Present)...");
+        Hooks::DirectX::Init();
+        spdlog::info("[F4MP] init: DirectX OK");
+
+        if (printAddr != 0) {
+            spdlog::info("[F4MP] init: enganchando la consola del juego...");
+            printHook.apply(printAddr, [](const char* fmt, va_list args) -> void {
+                char buf[1024];
+                vsnprintf(buf, sizeof(buf), fmt, args);
+                std::cout << buf << std::endl;
+                return printHook.call_orig(fmt, args);
+            });
+            // NOTA: no llamamos a Console_Print aqui. La funcion VPrint del juego
+            // no esta resuelta (offset 0) y llamarla crashea. El hook de arriba
+            // (pasivo) es suficiente para reflejar la consola del juego.
+            spdlog::info("[F4MP] init: consola OK (hook instalado)");
+        }
+
+        spdlog::info("[F4MP] init: iniciando red...");
+        Network::NetworkClient::GetInstance().Initialize();
+
+        spdlog::info("[F4MP] === init: completado ===");
+    } catch (const std::exception& e) {
+        spdlog::error("[F4MP] EXCEPCION en init: {}", e.what());
+    } catch (...) {
+        spdlog::error("[F4MP] EXCEPCION desconocida en init");
     }
-
-    Hooks::DirectX::Init();
-
-    if (printAddr != 0) {
-        printHook.apply(printAddr, [](const char* fmt, va_list args) -> void {
-            char buf[1024];
-            vsnprintf(buf, sizeof(buf), fmt, args);
-            std::cout << buf << std::endl;
-            return printHook.call_orig(fmt, args);
-        });
-
-        Console_Print("F4MP Loaded - Next-Gen Compatible");
-    }
-
-    Network::NetworkClient::GetInstance().Initialize();
 
     return TRUE;
 }

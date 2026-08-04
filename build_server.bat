@@ -23,7 +23,7 @@ set "PATH=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%VSPAT
 where cmake >nul 2>&1
 if errorlevel 1 goto :no_cmake
 
-set "VENDORED=%~dp0third_party\deps\x64-windows"
+set "VENDORED=%~dp0third_party\win-x64"
 if not exist "%VENDORED%\share" goto :no_deps
 
 echo.

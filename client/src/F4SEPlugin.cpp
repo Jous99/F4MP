@@ -90,9 +90,11 @@ extern "C" __declspec(dllexport) F4SEPluginVersionData F4SEPlugin_Version =
     "F4MP",     // name
     "F4MP",     // author
     "",         // supportEmail
-    0,
-    // F4MP resuelve direcciones por pattern scanning -> independiente de version.
-    F4SEPluginVersionData::kVersionIndependent_Signatures,
+    // Independiente de version: F4MP usa pattern scanning.
+    // Ponemos el flag "Signatures" en LOS DOS campos por si F4SE espera el
+    // orden contrario; asi cualquiera de los dos vale como "independiente".
+    F4SEPluginVersionData::kVersionIndependent_Signatures | F4SEPluginVersionData::kVersionIndependent_AddressLibraryPostNG,
+    F4SEPluginVersionData::kVersionIndependent_Signatures | F4SEPluginVersionData::kVersionIndependent_AddressLibraryPostNG,
     { 0 },      // compatibleVersions: todas
     0           // seVersionRequired: cualquiera
 };
