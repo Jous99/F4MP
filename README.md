@@ -21,7 +21,7 @@ See **[CHECKLIST.md](CHECKLIST.md)** for the full, up-to-date roadmap and what's
 | Pattern scanning (version-independent addresses) | ✅ Working |
 | Server: listen socket, client map, chat/position relay | ✅ Working |
 | Connection handshake (client ↔ server) | 🟡 Buggy |
-| In-game player sync (see/move other players) | ⬜ Not started |
+| In-game player sync (see/move other players) | 🟡 Started |
 
 ## What changed from the original
 
