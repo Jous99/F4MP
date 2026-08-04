@@ -32,14 +32,14 @@ static bool ResolveGameAddresses() {
     }
 
     spdlog::info("[F4MP] Pattern scanning for game addresses...");
-    spdlog::info("[F4MP] Module base: 0x%llX", scanner.GetModuleBase());
+    spdlog::info("[F4MP] Module base: {:#x}", (uintptr_t)scanner.GetModuleBase());
 
     auto consoleManagerResult = scanner.FindPattern("48 8B 05 ? ? ? ? 48 85 C0 74 ? 48 8B 40 ? C3");
     if (consoleManagerResult) {
         auto relAddr = *consoleManagerResult + 3;
         auto offset = *reinterpret_cast<int32_t*>(relAddr);
         g_console = *reinterpret_cast<ConsoleManager**>(relAddr + 4 + offset);
-        spdlog::info("[F4MP] ConsoleManager resolved: 0x%p", g_console);
+        spdlog::info("[F4MP] ConsoleManager resolved: {:#x}", reinterpret_cast<uintptr_t>(g_console));
     } else {
         spdlog::warn("[F4MP] ConsoleManager pattern not found");
         return false;
@@ -48,7 +48,7 @@ static bool ResolveGameAddresses() {
     auto consolePrintResult = scanner.FindPattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B F1 48 8B FA");
     if (consolePrintResult) {
         printAddr = *consolePrintResult;
-        spdlog::info("[F4MP] Console::Print resolved: 0x%llX", printAddr);
+        spdlog::info("[F4MP] Console::Print resolved: {:#x}", (uintptr_t)printAddr);
     } else {
         spdlog::warn("[F4MP] Console::Print pattern not found");
         return false;
