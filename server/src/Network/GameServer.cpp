@@ -1,4 +1,5 @@
 #include "GameServer.h"
+#include "../Heartbeat.h"
 #include <spdlog/spdlog.h>
 #include <thread>
 #include <cstring>
@@ -52,10 +53,29 @@ bool GameServer::Initialize(uint16_t port) {
         return false;
     }
 
+    m_port = port;
     m_startTime = std::chrono::steady_clock::now();
     m_lastStatus = m_startTime;
     m_initialized = true;
     m_running = true;
+
+    // Hilo de heartbeat al master server (si esta configurado).
+    if (!m_master.empty()) {
+        std::thread([this]() {
+            while (m_running) {
+                uint32_t players;
+                {
+                    std::lock_guard<std::mutex> lock(m_clientsMutex);
+                    players = GetPlayerCount();
+                }
+                Heartbeat::Send(m_master, m_name, m_port, players, m_maxPlayers);
+                // dormir 10s comprobando m_running cada 100ms para salir rapido
+                for (int i = 0; i < 100 && m_running; ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }).detach();
+        spdlog::info("[Server] Heartbeat al master server activado: {}", m_master);
+    }
 
     spdlog::info("========================================");
     spdlog::info("  {}", m_name);

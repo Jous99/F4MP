@@ -1,8 +1,8 @@
-# F4MPClient
+# F4MPClient  (DEPRECATED)
+
+> 🛑 **Deprecated.** This is the original injected/ASI client (custom pattern scanning + D3D11 hook). Its pattern scanning couldn't reliably locate the player, so it was **replaced by [`../client-ng/`](../client-ng/)**, a proper F4SE plugin built on CommonLibF4. Use that one. This folder is kept for reference.
 
 The client half of **F4MP** — a DLL that loads into Fallout 4, draws an in-game menu (Dear ImGui over a D3D11 hook) and talks to an F4MP server over GameNetworkingSockets.
-
-> ⚠️ Work in progress. The menu and networking work, but in-game player sync (seeing other players in the world) is not implemented yet. See [`../CHECKLIST.md`](../CHECKLIST.md).
 
 ## Requirements
 

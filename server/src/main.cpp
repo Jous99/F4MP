@@ -48,6 +48,7 @@ int UMain() {
 
     GameServer::GetInstance().SetName(Config::getInstance().Name);
     GameServer::GetInstance().SetMaxPlayers(Config::getInstance().PlayerLimit);
+    GameServer::GetInstance().SetMaster(Config::getInstance().Master);
 
     if (!GameServer::GetInstance().Initialize(port)) {
         spdlog::error("[Server] Failed to initialize server on port {}", port);
@@ -85,6 +86,7 @@ int main(int argc, char** argv) {
     if (!std::filesystem::exists(ConfigLocation)) {
         nlohmann::json Config;
         Config["server-name"] = "My F4MP Server";
+        Config["master-server"] = "";  // ej: "https://F4MP.joustech.space" para listarse
         Config["ip"] = "127.0.0.1";
         Config["port"] = 7779;
         Config["run-as-service"] = false;

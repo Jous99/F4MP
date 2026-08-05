@@ -49,6 +49,18 @@ namespace F4MP
         }
     }
 
+    // ---- PRUEBA de spawn: coloca un Protectron en tu posicion via Papyrus ----
+    // Llama a ObjectReference.PlaceAtMe por la VM (independiente de version, sin
+    // direcciones fijas). Es solo para comprobar que spawnear funciona.
+    static void SpawnDummy()
+    {
+        // Ejecuta el comando de consola (que sabemos que funciona) por su ID de
+        // Address Library. Evita el fragil empaquetado de argumentos de Papyrus.
+        REX::INFO("[F4MP] spawn: ejecutando 'player.placeatme 00106B09 1'");
+        RE::Console::ExecuteCommand("player.placeatme 00106B09 1");
+        REX::INFO("[F4MP] spawn: comando enviado");
+    }
+
     // ---- Pagina del menu (la dibuja el framework) ----
     static void __stdcall RenderMenu()
     {
@@ -83,6 +95,12 @@ namespace F4MP
                 net.SetPlayerName(g_playerName);
                 net.Connect(g_serverAddr, static_cast<uint16_t>(g_serverPort));
             }
+        }
+
+        ImGuiMCP::Separator();
+        if (ImGuiMCP::Button("Spawn dummy (test)")) {
+            // Ejecutar en el hilo principal del juego (mas seguro para Papyrus).
+            F4SE::GetTaskInterface()->AddTask([]() { SpawnDummy(); });
         }
     }
 

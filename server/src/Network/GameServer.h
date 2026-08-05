@@ -103,6 +103,7 @@ public:
 
     void SetMaxPlayers(uint32_t n) { if (n > 0) m_maxPlayers = n; }
     void SetName(const std::string& name) { m_name = name; }
+    void SetMaster(const std::string& url) { m_master = url; }
     void Stop() { m_running = false; }
 
     // Encola un comando de consola para procesarlo en el hilo principal.
@@ -142,7 +143,9 @@ private:
 
     uint32_t m_nextClientId = 1;
     uint32_t m_maxPlayers = MAX_PLAYERS;
+    uint16_t m_port = DEFAULT_SERVER_PORT;
     std::string m_name = "F4MP Server";
+    std::string m_master;  // URL del master server (vacio = desactivado)
 
     std::chrono::steady_clock::time_point m_startTime;
     std::chrono::steady_clock::time_point m_lastStatus;

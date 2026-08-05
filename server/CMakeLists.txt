@@ -35,6 +35,7 @@ find_package(spdlog CONFIG REQUIRED)
 add_executable(F4MPServer
     src/main.cpp
     src/Network/GameServer.cpp
+    src/Heartbeat.cpp
 )
 
 target_link_libraries(F4MPServer
@@ -43,4 +44,5 @@ target_link_libraries(F4MPServer
     ws2_32
     crypt32
     advapi32
+    winhttp
 )

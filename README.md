@@ -25,6 +25,32 @@ See **[CHECKLIST.md](CHECKLIST.md)** for the full roadmap.
 | Server (poll groups, admin console, chat/pos relay) | ✅ Working |
 | Test simulator (`F4MPSim`) | ✅ Working |
 
+## Requisitos
+
+### Cliente (`client-ng/`) — jugar
+
+- **Fallout 4** Next-Gen (1.10.980+) o Anniversary (1.11.x). No sirve Game Pass / Microsoft Store (sin F4SE).
+- **F4SE** (Fallout 4 Script Extender) de tu versión.
+- **Address Library for F4SE** (el `.bin` de tu versión, en `Data\F4SE\Plugins\`).
+- **F4SE Menu Framework** (para el menú in-game).
+
+### Cliente — compilar
+
+- **Visual Studio 2022** con "Desarrollo para el escritorio con C++".
+- **xmake** (`winget install xmake`).
+- El submódulo **CommonLibF4** (`git submodule update --init --recursive`).
+- Variable `XSE_FO4_GAME_PATH` para desplegar al juego (opcional). Ver [`client-ng/SETUP.md`](client-ng/SETUP.md).
+
+### Servidor (`server/`) — ejecutar
+
+- **Windows**. Junto al `.exe`, los DLLs de runtime (van incluidos en el build / artifact).
+- Un `config.json` (se crea solo la primera vez): ip, puerto, `player-limit`, `server-name`, `master-server`.
+
+### Servidor — compilar
+
+- **Visual Studio 2022** con C++ y **CMake** (viene con VS).
+- Dependencias ya incluidas en `third_party/win-x64/` — **no hace falta vcpkg**. Doble clic en `build_server.bat`.
+
 ## What changed from the original
 
 | Feature | Original | This port |
