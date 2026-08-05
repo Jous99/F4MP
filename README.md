@@ -30,9 +30,17 @@ See **[CHECKLIST.md](CHECKLIST.md)** for the full roadmap.
 ### Cliente (`client-ng/`) — jugar
 
 - **Fallout 4** Next-Gen (1.10.980+) o Anniversary (1.11.x). No sirve Game Pass / Microsoft Store (sin F4SE).
-- **F4SE** (Fallout 4 Script Extender) de tu versión.
-- **Address Library for F4SE** (el `.bin` de tu versión, en `Data\F4SE\Plugins\`).
-- **F4SE Menu Framework** (para el menú in-game).
+
+**Mods necesarios** (instalar en este orden):
+
+| Mod | Para qué | Dónde |
+|-----|----------|-------|
+| **F4SE** (Fallout 4 Script Extender) | Carga el plugin. Arranca el juego con `f4se_loader.exe`. | https://f4se.silverlock.org |
+| **Address Library for F4SE** | Direcciones del juego (el `.bin` de tu versión → `Data\F4SE\Plugins\`). | https://www.nexusmods.com/fallout4/mods/47327 |
+| **F4SE Menu Framework** | Dibuja el menú in-game (tecla `]`). | https://www.nexusmods.com/fallout4/mods/105090 |
+| **F4MP** (este mod) | `F4MPClient.dll` → `Data\F4SE\Plugins\`. DLLs de runtime → junto a `Fallout4.exe`. | Actions / Releases |
+
+> Descarga F4SE de tu **versión exacta** del juego, y el Address Library **a juego** con esa versión.
 
 ### Cliente — compilar
 
