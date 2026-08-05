@@ -90,6 +90,14 @@ int main(int argc, char** argv) {
     int         count = (argc > 3) ? atoi(argv[3]) : 1;
     if (count < 1) count = 1;
 
+    // Posicion FIJA opcional:  F4MPSim host puerto count  x y z
+    // Si se dan x/y/z, los bots se quedan quietos ahi (util para testear el spawn
+    // poniendolos justo donde estas tu). Si no, se mueven en circulo.
+    bool  fixedPos = (argc > 6);
+    float fx = fixedPos ? (float)atof(argv[4]) : 0.0f;
+    float fy = fixedPos ? (float)atof(argv[5]) : 0.0f;
+    float fz = fixedPos ? (float)atof(argv[6]) : 0.0f;
+
     std::signal(SIGINT, OnSignal);
 
     SteamNetworkingErrMsg err;
@@ -154,9 +162,15 @@ int main(int argc, char** argv) {
             lastPos = now;
             for (auto c : conns) {
                 PlayerPositionMsg pos{};
-                pos.x = std::sin(t) * 100.0f;
-                pos.y = std::cos(t) * 100.0f;
-                pos.z = 0.0f;
+                if (fixedPos) {
+                    pos.x = fx;
+                    pos.y = fy;
+                    pos.z = fz;
+                } else {
+                    pos.x = std::sin(t) * 100.0f;
+                    pos.y = std::cos(t) * 100.0f;
+                    pos.z = 0.0f;
+                }
                 pos.cellId = 1;
                 SendPacket(c, MessageType::PlayerPosition, &pos, sizeof(pos));
             }

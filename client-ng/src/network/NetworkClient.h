@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 #include <mutex>
+#include <unordered_map>
 
 #include <steam/steamnetworkingsockets.h>
 #include <steam/isteamnetworkingsockets.h>
@@ -87,6 +88,9 @@ public:
 
     uint32_t GetPlayerId() const { return m_playerId; }
 
+    // Copia del estado de los jugadores remotos (id -> ultima posicion).
+    std::unordered_map<uint32_t, PlayerPositionMsg> GetRemotePlayers();
+
 private:
     NetworkClient() = default;
 
@@ -105,6 +109,10 @@ private:
     std::string m_playerName = "Wastelander";
 
     std::mutex m_mutex;
+
+    // Jugadores remotos (actualizado desde PumpMessages).
+    std::mutex m_remoteMutex;
+    std::unordered_map<uint32_t, PlayerPositionMsg> m_remotePlayers;
 };
 
 }

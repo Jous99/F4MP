@@ -167,10 +167,26 @@ void NetworkClient::PumpMessages() {
                     m_playerId, accept->currentPlayers, accept->maxPlayers);
             } else if (header->type == MessageType::ConnectionRejected) {
                 REX::ERROR("[Network] Conexion rechazada por el servidor");
+            } else if (header->type == MessageType::PlayerPosition) {
+                const auto* pos = reinterpret_cast<const PlayerPositionMsg*>(payload);
+                if (pos->playerId != m_playerId) {  // ignorar la nuestra
+                    std::lock_guard<std::mutex> lock(m_remoteMutex);
+                    bool nuevo = m_remotePlayers.find(pos->playerId) == m_remotePlayers.end();
+                    m_remotePlayers[pos->playerId] = *pos;
+                    if (nuevo) {
+                        REX::INFO("[Network] Nuevo jugador remoto {} en x={:.0f} y={:.0f} z={:.0f}",
+                            pos->playerId, pos->x, pos->y, pos->z);
+                    }
+                }
             }
         }
         msg->Release();
     }
+}
+
+std::unordered_map<uint32_t, PlayerPositionMsg> NetworkClient::GetRemotePlayers() {
+    std::lock_guard<std::mutex> lock(m_remoteMutex);
+    return m_remotePlayers;
 }
 
 }

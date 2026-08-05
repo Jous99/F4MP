@@ -5,6 +5,8 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <cmath>
+#include <cstdio>
 
 // HITO 2 + 3: menu in-game (F4SE Menu Framework) + red real.
 // El menu conecta/desconecta y un hilo de red envia tu posicion al servidor.
@@ -68,12 +70,70 @@ namespace F4MP
             if (ImGuiMCP::Button("Desconectar")) {
                 net.Disconnect();
             }
+
+            ImGuiMCP::Separator();
+            auto remotos = net.GetRemotePlayers();
+            ImGuiMCP::Text("Jugadores remotos: %d", (int)remotos.size());
+            for (const auto& [id, p] : remotos) {
+                ImGuiMCP::Text("  #%u  x=%.0f y=%.0f z=%.0f", id, p.x, p.y, p.z);
+            }
         } else {
             ImGuiMCP::Text("Estado: desconectado");
             if (ImGuiMCP::Button("Conectar")) {
                 net.SetPlayerName(g_playerName);
                 net.Connect(g_serverAddr, static_cast<uint16_t>(g_serverPort));
             }
+        }
+    }
+
+    // ---- HUD: marcador flotante sobre cada jugador remoto (mundo -> pantalla) ----
+    static void __stdcall RenderHud()
+    {
+        auto& net = Network::NetworkClient::GetInstance();
+        if (!net.IsConnected()) return;
+
+        auto* local = RE::PlayerCharacter::GetSingleton();
+        if (!local) return;
+        const RE::NiPoint3 myPos = local->GetPosition();
+
+        auto* io = ImGuiMCP::GetIO();
+        if (!io) return;
+        const float W = io->DisplaySize.x;
+        const float H = io->DisplaySize.y;
+
+        ImGuiMCP::ImDrawList* dl = ImGuiMCP::GetForegroundDrawList();
+        if (!dl) return;
+
+        const ImGuiMCP::ImU32 col = 0xFF00FF00u;  // verde (ABGR)
+
+        auto remotos = net.GetRemotePlayers();
+        for (const auto& [id, p] : remotos) {
+            // Proyectamos pies y cabeza para un marcador con altura de persona.
+            RE::NiPoint3 feetW{ p.x, p.y, p.z };
+            RE::NiPoint3 headW{ p.x, p.y, p.z + 120.0f };  // ~altura (unidades FO4)
+
+            RE::NiPoint3 feetS = RE::HUDMenuUtils::WorldPtToScreenPt3(feetW);
+            RE::NiPoint3 headS = RE::HUDMenuUtils::WorldPtToScreenPt3(headW);
+
+            if (feetS.z <= 0.0f) continue;  // detras de la camara
+            if (feetS.x < -0.2f || feetS.x > 1.2f || feetS.y < -0.2f || feetS.y > 1.2f) continue;
+
+            const float fx = feetS.x * W, fy = (1.0f - feetS.y) * H;
+            const float hx = headS.x * W, hy = (1.0f - headS.y) * H;
+
+            const float dx = p.x - myPos.x, dy = p.y - myPos.y, dz = p.z - myPos.z;
+            const float dist = std::sqrt(dx * dx + dy * dy + dz * dz) / 100.0f;
+
+            // "cuerpo": linea de pies a cabeza
+            ImGuiMCP::ImDrawListManager::AddLine(dl, ImGuiMCP::ImVec2(fx, fy), ImGuiMCP::ImVec2(hx, hy), col, 3.0f);
+            // cabeza
+            ImGuiMCP::ImDrawListManager::AddCircleFilled(dl, ImGuiMCP::ImVec2(hx, hy), 6.0f, col, 16);
+            // pies
+            ImGuiMCP::ImDrawListManager::AddCircle(dl, ImGuiMCP::ImVec2(fx, fy), 4.0f, col, 12, 2.0f);
+
+            char label[64];
+            snprintf(label, sizeof(label), "Jugador %u  (%.0f m)", id, dist);
+            ImGuiMCP::ImDrawListManager::AddText(dl, ImGuiMCP::ImVec2(hx + 8.0f, hy - 16.0f), col, label);
         }
     }
 
@@ -85,7 +145,8 @@ namespace F4MP
         }
         F4SEMenuFramework::SetSection("F4MP");
         F4SEMenuFramework::AddSectionItem("Menu", RenderMenu);
-        REX::INFO("[F4MP] menu registrado");
+        F4SEMenuFramework::AddHudElement(RenderHud);
+        REX::INFO("[F4MP] menu + HUD registrados");
     }
 
     static void OnMessage(F4SE::MessagingInterface::Message* a_msg)
