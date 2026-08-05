@@ -4,3 +4,8 @@ build/
 .deps/
 /web
 web/
+
+# xmake (cliente CommonLibF4)
+.xmake/
+vsxmake*/
+client-ng/build/
