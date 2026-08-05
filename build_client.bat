@@ -28,6 +28,8 @@ if not exist "%VENDORED%\share" goto :no_deps
 
 echo.
 echo Configurando el proyecto...
+REM Si la cache apunta a otra ruta (p.ej. tras mover la carpeta), la limpiamos.
+if exist "client\build\CMakeCache.txt" findstr /C:"%~dp0client" "client\build\CMakeCache.txt" >nul 2>&1 || rmdir /s /q "client\build" >nul 2>&1
 cmake -S client -B client\build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 if errorlevel 1 goto :fail_cfg
 
@@ -39,10 +41,22 @@ if errorlevel 1 goto :fail_build
 if exist "%VENDORED%\bin" copy /Y "%VENDORED%\bin\*.dll" "client\build\" >nul 2>&1
 copy /Y "client\redist\steam_api64.dll" "client\build\" >nul 2>&1
 
+REM Genera tambien el .asi listo para el ASI loader (mismo binario).
+copy /Y "client\build\F4MPClient.dll" "client\build\F4MPClient.asi" >nul 2>&1
+
+REM DESPLIEGUE AUTOMATICO: copia el .asi directamente a la carpeta del juego.
+set "GAMEDIR=D:\SteamLibrary\steamapps\common\Fallout 4"
+set "DEPLOYED=NO"
+if exist "%GAMEDIR%\Fallout4.exe" (
+  copy /Y "client\build\F4MPClient.asi" "%GAMEDIR%\F4MPClient.asi" >nul 2>&1
+  set "DEPLOYED=SI"
+)
+
 echo.
 echo ============================================
 echo   [OK] Cliente compilado.
-echo   Salida: client\build\F4MPClient.dll
+echo   Desplegado en el juego: %DEPLOYED%
+echo   (si es NO, copia a mano client\build\F4MPClient.asi)
 echo ============================================
 goto :end
 

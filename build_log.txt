@@ -1,0 +1,60 @@
+F4MP - diagnostico build cliente 
+Fecha: 05/08/2026 15:42:22,89 
+ 
+VSPATH=C:\Program Files\Microsoft Visual Studio\2022\Community 
+ 
+[where cmake] 
+C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe
+C:\Program Files\CMake\bin\cmake.exe
+ 
+===================== CONFIGURE ===================== 
+CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- F4MP: usando dependencias de third_party/deps (sin vcpkg)
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found Protobuf: C:/Users/Jous/F4MP/third_party/win-x64/lib/libprotobuf.lib (found version "6.33.4")
+-- Found OpenSSL: C:/Users/Jous/F4MP/third_party/win-x64/lib/libcrypto.lib (found version "3.6.3")
+-- Configuring done (3.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: C:/Users/Jous/F4MP/client/buildx
+ 
+===================== BUILD ===================== 
+[1/15] Building CXX object CMakeFiles\F4MPClient.dir\src\F4SEPlugin.cpp.obj
+[2/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui_impl_win32.cpp.obj
+[3/15] Building CXX object common\CMakeFiles\Common.dir\src\GamePtr.cpp.obj
+[4/15] Linking CXX static library common\Common.lib
+[5/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui_impl_dx11.cpp.obj
+[6/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui_widgets.cpp.obj
+[7/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui_draw.cpp.obj
+[8/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui_demo.cpp.obj
+[9/15] Building CXX object CMakeFiles\F4MPClient.dir\src\Hooks\Window.cpp.obj
+[10/15] Building CXX object CMakeFiles\F4MPClient.dir\src\network\NetworkClient.cpp.obj
+C:\Users\Jous\F4MP\client\src\network\NetworkClient.cpp(129): warning C4996: 'strncpy': This function or variable may be unsafe. Consider using strncpy_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+[11/15] Building CXX object CMakeFiles\F4MPClient.dir\src\Hooks\Direct3D11.cpp.obj
+[12/15] Building CXX object CMakeFiles\F4MPClient.dir\src\imgui\imgui.cpp.obj
+[13/15] Building CXX object CMakeFiles\F4MPClient.dir\src\PlayerSync.cpp.obj
+[14/15] Building CXX object CMakeFiles\F4MPClient.dir\src\main.cpp.obj
+C:\Users\Jous\F4MP\client\src\DirectXHook.h(40): warning C4244: '=': conversi¢n de 'LONG' a 'float'; posible p‚rdida de datos
+C:\Users\Jous\F4MP\client\src\DirectXHook.h(41): warning C4244: '=': conversi¢n de 'LONG' a 'float'; posible p‚rdida de datos
+[15/15] Linking CXX shared library F4MPClient.dll
+ 
+===================== FIN ===================== 

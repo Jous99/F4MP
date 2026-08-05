@@ -10,6 +10,7 @@
 #include "imgui/imgui_impl_dx11.h"
 #include "imgui/imgui_impl_win32.h"
 #include <Network/NetworkClient.h>
+#include "PlayerSync.h"
 
 using namespace Exceptions::Core::Exceptions;
 using namespace Hooks;
@@ -117,6 +118,8 @@ namespace Hooks {
         void Render() {
             // Procesa la red cada frame (callbacks de conexion + mensajes entrantes).
             Network::NetworkClient::GetInstance().PumpMessages();
+            // Mitad 1 del sync: lee la posicion del jugador local y la envia.
+            PlayerSync::Update();
             Imgui_Render_Impl();
         }
 

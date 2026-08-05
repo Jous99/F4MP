@@ -93,19 +93,9 @@ DWORD WINAPI Main(LPVOID lpThreadParameter) {
         Hooks::DirectX::Init();
         spdlog::info("[F4MP] init: DirectX OK");
 
-        if (printAddr != 0) {
-            spdlog::info("[F4MP] init: enganchando la consola del juego...");
-            printHook.apply(printAddr, [](const char* fmt, va_list args) -> void {
-                char buf[1024];
-                vsnprintf(buf, sizeof(buf), fmt, args);
-                std::cout << buf << std::endl;
-                return printHook.call_orig(fmt, args);
-            });
-            // NOTA: no llamamos a Console_Print aqui. La funcion VPrint del juego
-            // no esta resuelta (offset 0) y llamarla crashea. El hook de arriba
-            // (pasivo) es suficiente para reflejar la consola del juego.
-            spdlog::info("[F4MP] init: consola OK (hook instalado)");
-        }
+        // Hook de la consola del juego: DESACTIVADO. Enganchaba una funcion cuya
+        // firma no coincide y llenaba la salida de basura binaria. No es necesario.
+        // (printAddr se resuelve pero no lo usamos por ahora.)
 
         spdlog::info("[F4MP] init: iniciando red...");
         Network::NetworkClient::GetInstance().Initialize();
