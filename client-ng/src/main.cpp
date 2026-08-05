@@ -1,70 +1,109 @@
 #include "pch.h"
 #include "F4SEMenuFramework.h"
+#include "network/NetworkClient.h"
 
-// HITO 3: menu in-game usando F4SE Menu Framework (render ImGui compartido,
-// sin montar nuestro propio hook de DirectX).
-//
-// Requisitos en el juego:
-//   - Instalar el mod "F4SE Menu Framework" (aporta el render del menu).
-//   - Se abre en el juego con la tecla del framework (por defecto  ]  ).
+#include <thread>
+#include <chrono>
+#include <atomic>
 
-namespace F4MP_UI
+// HITO 2 + 3: menu in-game (F4SE Menu Framework) + red real.
+// El menu conecta/desconecta y un hilo de red envia tu posicion al servidor.
+
+namespace F4MP
 {
     static char g_serverAddr[64] = "127.0.0.1";
     static int  g_serverPort = 7779;
-    static bool g_connected = false;  // stub hasta el Hito 2 (red)
+    static char g_playerName[64] = "Wastelander";
+    static std::atomic<bool> g_netThreadStarted{ false };
 
-    // El framework llama a esta funcion cada frame para dibujar nuestra pagina.
+    // ---- Hilo de red: procesa mensajes y envia la posicion ----
+    static void NetThread()
+    {
+        using namespace std::chrono;
+        auto lastSend = steady_clock::now();
+
+        for (;;) {
+            auto& net = Network::NetworkClient::GetInstance();
+            net.PumpMessages();
+
+            if (net.IsConnected()) {
+                auto now = steady_clock::now();
+                if (duration_cast<milliseconds>(now - lastSend).count() >= 100) {  // 10/s
+                    lastSend = now;
+                    if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+                        const auto pos = player->GetPosition();
+                        Network::PlayerPositionMsg msg{};
+                        msg.playerId = net.GetPlayerId();
+                        msg.x = pos.x;
+                        msg.y = pos.y;
+                        msg.z = pos.z;
+                        msg.cellId = 0;
+                        net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
+                    }
+                }
+            }
+
+            std::this_thread::sleep_for(milliseconds(30));
+        }
+    }
+
+    // ---- Pagina del menu (la dibuja el framework) ----
     static void __stdcall RenderMenu()
     {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (player) {
+        auto& net = Network::NetworkClient::GetInstance();
+
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             const auto pos = player->GetPosition();
             ImGuiMCP::Text("Tu posicion:  x=%.0f  y=%.0f  z=%.0f", pos.x, pos.y, pos.z);
-        } else {
-            ImGuiMCP::Text("Jugador no disponible");
         }
 
         ImGuiMCP::Separator();
 
+        ImGuiMCP::InputText("Nombre", g_playerName, sizeof(g_playerName));
         ImGuiMCP::InputText("Servidor", g_serverAddr, sizeof(g_serverAddr));
         ImGuiMCP::InputInt("Puerto", &g_serverPort);
 
-        if (g_connected) {
-            ImGuiMCP::Text("Estado: CONECTADO");
+        if (net.IsConnected()) {
+            ImGuiMCP::Text("Estado: CONECTADO (ID %u)", net.GetPlayerId());
             if (ImGuiMCP::Button("Desconectar")) {
-                g_connected = false;
-                REX::INFO("[F4MP] (stub) desconectar");
+                net.Disconnect();
             }
         } else {
             ImGuiMCP::Text("Estado: desconectado");
             if (ImGuiMCP::Button("Conectar")) {
-                REX::INFO("[F4MP] (stub) conectar a {}:{}", g_serverAddr, g_serverPort);
-                g_connected = true;  // stub: en el Hito 2 esto conectara de verdad
+                net.SetPlayerName(g_playerName);
+                net.Connect(g_serverAddr, static_cast<uint16_t>(g_serverPort));
             }
         }
     }
 
-    static void Register()
+    static void RegisterMenu()
     {
         if (!F4SEMenuFramework::IsInstalled()) {
-            REX::INFO("[F4MP] F4SE Menu Framework NO instalado: el menu no estara disponible");
+            REX::INFO("[F4MP] F4SE Menu Framework NO instalado: menu no disponible");
             return;
         }
         F4SEMenuFramework::SetSection("F4MP");
         F4SEMenuFramework::AddSectionItem("Menu", RenderMenu);
-        REX::INFO("[F4MP] menu registrado en F4SE Menu Framework");
+        REX::INFO("[F4MP] menu registrado");
     }
-}
 
-static void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
-{
-    if (!a_msg) return;
-    // Registrar en kPostLoad/kPostPostLoad: asi el DLL del framework ya esta
-    // cargado sin depender del orden de plugins.
-    if (a_msg->type == F4SE::MessagingInterface::kPostLoad ||
-        a_msg->type == F4SE::MessagingInterface::kPostPostLoad) {
-        F4MP_UI::Register();
+    static void OnMessage(F4SE::MessagingInterface::Message* a_msg)
+    {
+        if (!a_msg) return;
+
+        if (a_msg->type == F4SE::MessagingInterface::kPostLoad ||
+            a_msg->type == F4SE::MessagingInterface::kPostPostLoad) {
+            RegisterMenu();
+        }
+
+        if (a_msg->type == F4SE::MessagingInterface::kGameDataReady) {
+            if (!g_netThreadStarted.exchange(true)) {
+                Network::NetworkClient::GetInstance().Initialize();
+                std::thread(NetThread).detach();
+                REX::INFO("[F4MP] red inicializada, hilo de red en marcha");
+            }
+        }
     }
 }
 
@@ -73,6 +112,6 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
     F4SE::Init(a_f4se);
     REX::INFO("[F4MP] Plugin cargado (CommonLibF4)");
 
-    F4SE::GetMessagingInterface()->RegisterListener(OnF4SEMessage);
+    F4SE::GetMessagingInterface()->RegisterListener(F4MP::OnMessage);
     return true;
 }

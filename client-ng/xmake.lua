@@ -9,7 +9,11 @@ set_warnings("allextra")
 add_rules("mode.debug", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")
 
+-- Dependencia de red
+add_requires("gamenetworkingsockets")
+
 target("F4MPClient")
+    add_packages("gamenetworkingsockets")
     -- Esta regla genera automaticamente la version del plugin de F4SE
     -- (adios al "incompatible") y despliega el DLL al juego.
     add_rules("commonlibf4.plugin", {

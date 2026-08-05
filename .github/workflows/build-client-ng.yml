@@ -1,0 +1,57 @@
+# Compila el cliente nuevo (CommonLibF4 + xmake): client-ng/
+# CommonLibF4 va como submodulo, xmake baja el resto de dependencias.
+
+name: Build Client NG
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'client-ng/**'
+      - '.github/workflows/build-client-ng.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-client-ng:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (con submodulos)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Preparar MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Instalar xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Compilar (xmake)
+        shell: cmd
+        run: |
+          cd client-ng
+          xmake f -y -m releasedbg
+          xmake -y
+
+      - name: Reunir binario
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Get-ChildItem -Path client-ng/build -Recurse -Filter F4MPClient.dll | ForEach-Object { Copy-Item $_.FullName dist/ }
+
+      - name: Subir artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: F4MPClient-NG
+          path: dist/
