@@ -8,20 +8,22 @@ A multiplayer mod for **Fallout 4**, revived and ported to work with **Next-Gen 
 
 ## Project status
 
-⚠️ **Work in progress — not yet playable.** The networking layer and in-game UI are built, but two things are still missing before players can actually see each other:
+🟢 **Working (early), not yet a full multiplayer experience.** The mod loads in Fallout 4 via F4SE, connects to a dedicated server, syncs your position, and shows other players as in-world markers. Actual player *bodies* (NPCs) are the remaining big step.
 
-1. **Networking bugs** in the connection handshake (see `CHECKLIST.md`) mean a client cannot fully connect yet.
-2. **No game integration**: the client does not yet read the local player's position or render other players in the world.
+The client was rebuilt on **CommonLibF4** (see [`client-ng/`](client-ng/)) after the original pattern-scanning approach proved unreliable for locating the player. The old injected/ASI client (`client/`) is deprecated.
 
-See **[CHECKLIST.md](CHECKLIST.md)** for the full, up-to-date roadmap and what's done vs. pending.
+See **[CHECKLIST.md](CHECKLIST.md)** for the full roadmap.
 
 | Area | State |
 |------|-------|
-| DLL injection + D3D11/ImGui overlay | ✅ Working |
-| Pattern scanning (version-independent addresses) | ✅ Working |
-| Server: listen socket, client map, chat/position relay | ✅ Working |
-| Connection handshake (client ↔ server) | 🟡 Buggy |
-| In-game player sync (see/move other players) | 🟡 Started |
+| Client loads via F4SE (CommonLibF4) | ✅ Working |
+| In-game menu (F4SE Menu Framework) | ✅ Working |
+| Connect to server + handshake | ✅ Working |
+| Read & send local player position | ✅ Working |
+| Receive other players + in-world markers | ✅ Working |
+| Spawn actual player bodies (NPCs) | ⬜ Pending (hard — native spawn / Papyrus) |
+| Server (poll groups, admin console, chat/pos relay) | ✅ Working |
+| Test simulator (`F4MPSim`) | ✅ Working |
 
 ## What changed from the original
 
