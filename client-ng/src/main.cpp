@@ -106,7 +106,21 @@ namespace F4MP
     static void BodiesSync()
     {
         auto& net = Network::NetworkClient::GetInstance();
-        if (!net.IsConnected()) return;
+        if (!net.IsConnected()) {
+            // Desconectado: despawnear cualquier cuerpo que haya quedado.
+            for (auto& [pid, fid] : g_bodies) {
+                char cmd[64];
+                std::snprintf(cmd, sizeof(cmd), "prid %x", fid);
+                RE::Console::ExecuteCommand(cmd);
+                RE::Console::ExecuteCommand("disable");
+                RE::Console::ExecuteCommand("markfordelete");
+            }
+            if (!g_bodies.empty()) {
+                REX::INFO("[F4MP] desconectado: {} cuerpo(s) despawneado(s)", g_bodies.size());
+                g_bodies.clear();
+            }
+            return;
+        }
         auto remotos = net.GetRemotePlayers();
 
         // dt real entre ticks (para que la suavidad no dependa de los FPS).

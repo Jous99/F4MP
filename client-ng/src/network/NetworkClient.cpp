@@ -87,6 +87,11 @@ void NetworkClient::Disconnect() {
     }
     m_connected = false;
     m_playerId = 0;
+    {
+        std::lock_guard<std::mutex> rlock(m_remoteMutex);
+        m_remotePlayers.clear();   // olvidar a los remotos: si no, quedan fantasmas
+        m_remoteLastSeen.clear();
+    }
     REX::INFO("[Network] Desconectado");
 }
 
@@ -137,6 +142,11 @@ void NetworkClient::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_
             }
             m_connected = false;
             m_playerId = 0;
+            {
+                std::lock_guard<std::mutex> rlock(m_remoteMutex);
+                m_remotePlayers.clear();   // olvidar a los remotos al cerrarse la conexion
+                m_remoteLastSeen.clear();
+            }
             break;
 
         default:
@@ -173,6 +183,7 @@ void NetworkClient::PumpMessages() {
                     std::lock_guard<std::mutex> lock(m_remoteMutex);
                     bool nuevo = m_remotePlayers.find(pos->playerId) == m_remotePlayers.end();
                     m_remotePlayers[pos->playerId] = *pos;
+                    m_remoteLastSeen[pos->playerId] = std::chrono::steady_clock::now();
                     if (nuevo) {
                         REX::INFO("[Network] Nuevo jugador remoto {} en x={:.0f} y={:.0f} z={:.0f}",
                             pos->playerId, pos->x, pos->y, pos->z);
@@ -186,6 +197,18 @@ void NetworkClient::PumpMessages() {
 
 std::unordered_map<uint32_t, PlayerPositionMsg> NetworkClient::GetRemotePlayers() {
     std::lock_guard<std::mutex> lock(m_remoteMutex);
+    // Olvidar remotos que llevan >5 s sin mandar nada (se cayeron sin avisar).
+    const auto ahora = std::chrono::steady_clock::now();
+    for (auto it = m_remotePlayers.begin(); it != m_remotePlayers.end();) {
+        auto seen = m_remoteLastSeen.find(it->first);
+        if (seen != m_remoteLastSeen.end() &&
+            std::chrono::duration<float>(ahora - seen->second).count() > 5.0f) {
+            m_remoteLastSeen.erase(seen);
+            it = m_remotePlayers.erase(it);
+        } else {
+            ++it;
+        }
+    }
     return m_remotePlayers;
 }
 

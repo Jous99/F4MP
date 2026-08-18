@@ -6,6 +6,7 @@
 #include <functional>
 #include <mutex>
 #include <unordered_map>
+#include <chrono>
 
 #include <steam/steamnetworkingsockets.h>
 #include <steam/isteamnetworkingsockets.h>
@@ -114,6 +115,7 @@ private:
     // Jugadores remotos (actualizado desde PumpMessages).
     std::mutex m_remoteMutex;
     std::unordered_map<uint32_t, PlayerPositionMsg> m_remotePlayers;
+    std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> m_remoteLastSeen;
 };
 
 }
