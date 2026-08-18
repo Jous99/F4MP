@@ -51,6 +51,7 @@ struct PlayerPositionMsg {
     uint32_t playerId;
     float x, y, z;
     float velocityX, velocityY, velocityZ;
+    float angleZ;        // heading de vista (rad): hacia donde mira el jugador
     uint32_t cellId;
     bool isRunning;
     bool isSneaking;

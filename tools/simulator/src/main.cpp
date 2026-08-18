@@ -37,7 +37,7 @@ struct ConnectionRequestMsg { char playerName[64]; uint32_t protocolVersion; };
 struct ConnectionAcceptedMsg { uint32_t playerId; uint32_t currentPlayers; uint32_t maxPlayers; };
 struct PlayerPositionMsg {
     uint32_t playerId; float x, y, z; float velocityX, velocityY, velocityZ;
-    uint32_t cellId; bool isRunning; bool isSneaking;
+    float angleZ; uint32_t cellId; bool isRunning; bool isSneaking;
 };
 struct ChatMessageMsg { uint32_t senderId; char message[256]; uint8_t channel; };
 #pragma pack(pop)
@@ -171,6 +171,7 @@ int main(int argc, char** argv) {
                     pos.y = std::cos(t) * 100.0f;
                     pos.z = 0.0f;
                 }
+                pos.angleZ = t;   // gira lentamente para ver la rotacion
                 pos.cellId = 1;
                 SendPacket(c, MessageType::PlayerPosition, &pos, sizeof(pos));
             }

@@ -36,7 +36,7 @@ namespace F4MP
 
             if (net.IsConnected()) {
                 auto now = steady_clock::now();
-                if (duration_cast<milliseconds>(now - lastSend).count() >= 100) {  // 10/s
+                if (duration_cast<milliseconds>(now - lastSend).count() >= 50) {  // 20/s
                     lastSend = now;
                     if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                         const auto pos = player->GetPosition();
@@ -45,18 +45,19 @@ namespace F4MP
                         msg.x = pos.x;
                         msg.y = pos.y;
                         msg.z = pos.z;
+                        msg.angleZ = player->GetHeading();  // hacia donde miras (cursor)
                         msg.cellId = 0;
                         net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
                     }
                 }
-                // Sincronizar cuerpos en el hilo PRINCIPAL ~30/s (para interpolar suave).
-                if (duration_cast<milliseconds>(now - lastSync).count() >= 33) {
+                // Sincronizar cuerpos en el hilo PRINCIPAL ~60/s (para interpolar suave).
+                if (duration_cast<milliseconds>(now - lastSync).count() >= 16) {
                     lastSync = now;
                     F4SE::GetTaskInterface()->AddTask([]() { BodiesSync(); });
                 }
             }
 
-            std::this_thread::sleep_for(milliseconds(30));
+            std::this_thread::sleep_for(milliseconds(8));
         }
     }
 
@@ -90,8 +91,6 @@ namespace F4MP
 
     // ================= Cuerpos de jugadores remotos (Fase A) =================
     static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
-    static std::unordered_map<uint32_t, RE::NiPoint3> g_lastPos;  // playerId -> ultima pos (para heading)
-    static std::unordered_map<uint32_t, float> g_heading;         // playerId -> heading actual (rad)
     static bool g_spawnPending = false;
     static uint32_t g_spawnFor = 0;
     static std::chrono::steady_clock::time_point g_spawnAt;
@@ -134,8 +133,6 @@ namespace F4MP
             RE::Console::ExecuteCommand("disable");
             RE::Console::ExecuteCommand("markfordelete");
             g_bodies.erase(pid);
-            g_lastPos.erase(pid);
-            g_heading.erase(pid);
             REX::INFO("[F4MP] cuerpo eliminado (jugador {} desconectado, actor {:#x})", pid, fid);
         }
 
@@ -163,20 +160,8 @@ namespace F4MP
                 actor->SetPosition(nueva, true);
             }
 
-            // Rotacion: mirar hacia donde se mueve el jugador (heading del ultimo desplazamiento).
-            auto itPrev = g_lastPos.find(pid);
-            if (itPrev != g_lastPos.end()) {
-                float mvx = objetivo.x - itPrev->second.x;
-                float mvy = objetivo.y - itPrev->second.y;
-                if (mvx * mvx + mvy * mvy > 4.0f) {              // solo si se movio (>2 uds)
-                    g_heading[pid] = std::atan2(mvx, mvy);        // convencion Fallout: 0 = +Y
-                }
-            }
-            g_lastPos[pid] = objetivo;
-            auto itH = g_heading.find(pid);
-            if (itH != g_heading.end()) {
-                actor->SetAngleOnReference(RE::NiPoint3{ 0.0f, 0.0f, itH->second });
-            }
+            // Rotacion: mirar hacia donde MIRA el jugador (heading de vista recibido).
+            actor->SetAngleOnReference(RE::NiPoint3{ 0.0f, 0.0f, it->second.angleZ });
         }
 
         // 2. Resolver un spawn pendiente (el placeatme es asincrono).
