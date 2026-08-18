@@ -7,6 +7,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 // HITO 2 + 3: menu in-game (F4SE Menu Framework) + red real.
 // El menu conecta/desconecta y un hilo de red envia tu posicion al servidor.
@@ -18,11 +21,14 @@ namespace F4MP
     static char g_playerName[64] = "Wastelander";
     static std::atomic<bool> g_netThreadStarted{ false };
 
-    // ---- Hilo de red: procesa mensajes y envia la posicion ----
+    static void BodiesSync();  // declaracion adelantada (se define mas abajo)
+
+    // ---- Hilo de red: procesa mensajes, envia la posicion y sincroniza cuerpos ----
     static void NetThread()
     {
         using namespace std::chrono;
         auto lastSend = steady_clock::now();
+        auto lastSync = steady_clock::now();
 
         for (;;) {
             auto& net = Network::NetworkClient::GetInstance();
@@ -43,6 +49,11 @@ namespace F4MP
                         net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
                     }
                 }
+                // Sincronizar cuerpos en el hilo PRINCIPAL ~30/s (para interpolar suave).
+                if (duration_cast<milliseconds>(now - lastSync).count() >= 33) {
+                    lastSync = now;
+                    F4SE::GetTaskInterface()->AddTask([]() { BodiesSync(); });
+                }
             }
 
             std::this_thread::sleep_for(milliseconds(30));
@@ -52,13 +63,169 @@ namespace F4MP
     // ---- PRUEBA de spawn: coloca un Protectron en tu posicion via Papyrus ----
     // Llama a ObjectReference.PlaceAtMe por la VM (independiente de version, sin
     // direcciones fijas). Es solo para comprobar que spawnear funciona.
+    static const uint32_t kDummyBase = 0x00106B09;  // Protectron (prueba)
+
+    // Busca un actor de la base indicada cerca del jugador que NO este ya reclamado.
+    static RE::Actor* FindNearbyActor(uint32_t baseFormId, const std::unordered_set<uint32_t>& exclude)
+    {
+        auto* pl = RE::PlayerCharacter::GetSingleton();
+        if (!pl) return nullptr;
+        auto* cell = pl->GetParentCell();
+        if (!cell) return nullptr;
+        const RE::NiPoint3 pos = pl->GetPosition();
+
+        RE::Actor* found = nullptr;
+        cell->ForEachReferenceInRange(pos, 800.0f, [&](RE::TESObjectREFR* ref) {
+            if (ref && ref != static_cast<RE::TESObjectREFR*>(pl)) {
+                auto* base = ref->GetObjectReference();
+                if (base && base->GetFormID() == baseFormId && exclude.find(ref->GetFormID()) == exclude.end()) {
+                    found = ref->As<RE::Actor>();
+                    return RE::BSContainer::ForEachResult::kStop;
+                }
+            }
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+        return found;
+    }
+
+    // ================= Cuerpos de jugadores remotos (Fase A) =================
+    static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
+    static std::unordered_map<uint32_t, RE::NiPoint3> g_lastPos;  // playerId -> ultima pos (para heading)
+    static std::unordered_map<uint32_t, float> g_heading;         // playerId -> heading actual (rad)
+    static bool g_spawnPending = false;
+    static uint32_t g_spawnFor = 0;
+    static std::chrono::steady_clock::time_point g_spawnAt;
+
+    static std::unordered_set<uint32_t> ClaimedFormIds()
+    {
+        std::unordered_set<uint32_t> s;
+        for (auto& [pid, fid] : g_bodies) s.insert(fid);
+        return s;
+    }
+
+    // Se ejecuta en el hilo PRINCIPAL: crea/mueve un cuerpo por cada jugador remoto.
+    static void BodiesSync()
+    {
+        auto& net = Network::NetworkClient::GetInstance();
+        if (!net.IsConnected()) return;
+        auto remotos = net.GetRemotePlayers();
+
+        // dt real entre ticks (para que la suavidad no dependa de los FPS).
+        static std::chrono::steady_clock::time_point lastTick = std::chrono::steady_clock::now();
+        auto ahora = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(ahora - lastTick).count();
+        lastTick = ahora;
+        if (dt <= 0.0f || dt > 0.5f) dt = 0.033f;  // clamp por si hubo pausa/carga
+
+        // Suavizado exponencial: alcanza el objetivo en ~tau segundos.
+        const float tau = 0.12f;
+        float alpha = 1.0f - std::exp(-dt / tau);
+
+        // 0. Limpiar cuerpos de jugadores que ya no estan conectados.
+        std::vector<uint32_t> muertos;
+        for (auto& [pid, fid] : g_bodies) {
+            if (remotos.find(pid) == remotos.end()) muertos.push_back(pid);
+        }
+        for (uint32_t pid : muertos) {
+            uint32_t fid = g_bodies[pid];
+            char cmd[64];
+            std::snprintf(cmd, sizeof(cmd), "prid %x", fid);
+            RE::Console::ExecuteCommand(cmd);   // seleccionar la referencia
+            RE::Console::ExecuteCommand("disable");
+            RE::Console::ExecuteCommand("markfordelete");
+            g_bodies.erase(pid);
+            g_lastPos.erase(pid);
+            g_heading.erase(pid);
+            REX::INFO("[F4MP] cuerpo eliminado (jugador {} desconectado, actor {:#x})", pid, fid);
+        }
+
+        // 1. Mover suavemente los cuerpos hacia la posicion de su jugador.
+        for (auto& [pid, fid] : g_bodies) {
+            auto it = remotos.find(pid);
+            if (it == remotos.end()) continue;
+            auto* form = RE::TESForm::GetFormByID(fid);
+            auto* actor = form ? form->As<RE::Actor>() : nullptr;
+            if (!actor) continue;
+
+            const RE::NiPoint3 objetivo{ it->second.x, it->second.y, it->second.z };
+            const RE::NiPoint3 actual = actor->GetPosition();
+            const RE::NiPoint3 delta = objetivo - actual;
+            const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+
+            if (dist > 1500.0f) {
+                // Salto grande (spawn inicial o fast travel): teletransportar.
+                actor->SetPosition(objetivo, true);
+            } else {
+                // Interpolar hacia el objetivo.
+                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
+                                    actual.y + delta.y * alpha,
+                                    actual.z + delta.z * alpha };
+                actor->SetPosition(nueva, true);
+            }
+
+            // Rotacion: mirar hacia donde se mueve el jugador (heading del ultimo desplazamiento).
+            auto itPrev = g_lastPos.find(pid);
+            if (itPrev != g_lastPos.end()) {
+                float mvx = objetivo.x - itPrev->second.x;
+                float mvy = objetivo.y - itPrev->second.y;
+                if (mvx * mvx + mvy * mvy > 4.0f) {              // solo si se movio (>2 uds)
+                    g_heading[pid] = std::atan2(mvx, mvy);        // convencion Fallout: 0 = +Y
+                }
+            }
+            g_lastPos[pid] = objetivo;
+            auto itH = g_heading.find(pid);
+            if (itH != g_heading.end()) {
+                actor->SetAngleOnReference(RE::NiPoint3{ 0.0f, 0.0f, itH->second });
+            }
+        }
+
+        // 2. Resolver un spawn pendiente (el placeatme es asincrono).
+        if (g_spawnPending) {
+            if (std::chrono::duration<float>(std::chrono::steady_clock::now() - g_spawnAt).count() > 0.4f) {
+                RE::Actor* actor = FindNearbyActor(kDummyBase, ClaimedFormIds());
+                if (actor && remotos.find(g_spawnFor) != remotos.end()) {
+                    g_bodies[g_spawnFor] = actor->GetFormID();
+                    REX::INFO("[F4MP] cuerpo asignado a jugador {} (actor {:#x})", g_spawnFor, actor->GetFormID());
+                }
+                g_spawnPending = false;
+            }
+            return;  // un spawn a la vez
+        }
+
+        // 3. Iniciar un spawn para el primer jugador remoto sin cuerpo.
+        for (auto& [pid, pos] : remotos) {
+            if (g_bodies.find(pid) == g_bodies.end()) {
+                RE::Console::ExecuteCommand("player.placeatme 00106B09 1");
+                g_spawnPending = true;
+                g_spawnFor = pid;
+                g_spawnAt = std::chrono::steady_clock::now();
+                REX::INFO("[F4MP] spawneando cuerpo para jugador {}", pid);
+                break;
+            }
+        }
+    }
+
     static void SpawnDummy()
     {
-        // Ejecuta el comando de consola (que sabemos que funciona) por su ID de
-        // Address Library. Evita el fragil empaquetado de argumentos de Papyrus.
-        REX::INFO("[F4MP] spawn: ejecutando 'player.placeatme 00106B09 1'");
+        // 1. Spawnear via consola (funciona de forma fiable).
+        REX::INFO("[F4MP] spawn: placeatme");
         RE::Console::ExecuteCommand("player.placeatme 00106B09 1");
-        REX::INFO("[F4MP] spawn: comando enviado");
+
+        // 2. El spawn es asincrono: esperar un poco y, en el hilo principal,
+        //    localizar el actor y moverlo a un lado (prueba de spawn+find+move).
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            F4SE::GetTaskInterface()->AddTask([]() {
+                RE::Actor* actor = FindNearbyActor(kDummyBase, {});
+                if (!actor) { REX::WARN("[F4MP] spawn: no encontre el actor spawneado"); return; }
+
+                auto* pl = RE::PlayerCharacter::GetSingleton();
+                RE::NiPoint3 target = pl ? pl->GetPosition() : RE::NiPoint3{};
+                target.x += 300.0f;  // moverlo 300 unidades a un lado
+                actor->SetPosition(target, true);
+                REX::INFO("[F4MP] spawn: actor {:#x} encontrado y movido", actor->GetFormID());
+            });
+        }).detach();
     }
 
     // ---- Pagina del menu (la dibuja el framework) ----

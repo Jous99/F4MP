@@ -8,7 +8,7 @@ A multiplayer mod for **Fallout 4**, revived and ported to work with **Next-Gen 
 
 ## Project status
 
-🟢 **Working (early), not yet a full multiplayer experience.** The mod loads in Fallout 4 via F4SE, connects to a dedicated server, syncs your position, and shows other players as in-world markers. Actual player *bodies* (NPCs) are the remaining big step.
+🟢 **Working (early), not yet a full multiplayer experience.** The mod loads in Fallout 4 via F4SE, connects to a dedicated server, syncs your position, and renders other players as **actual in-world bodies (NPCs) that move, interpolate smoothly, and face their direction of travel** — validated with two real clients. The bodies are currently placeholder Protectrons; a human/passive body is the next step.
 
 The client was rebuilt on **CommonLibF4** (see [`client-ng/`](client-ng/)) after the original pattern-scanning approach proved unreliable for locating the player. The old injected/ASI client (`client/`) is deprecated.
 
@@ -21,7 +21,10 @@ See **[CHECKLIST.md](CHECKLIST.md)** for the full roadmap.
 | Connect to server + handshake | ✅ Working |
 | Read & send local player position | ✅ Working |
 | Receive other players + in-world markers | ✅ Working |
-| Spawn actual player bodies (NPCs) | ⬜ Pending (hard — native spawn / Papyrus) |
+| Spawn actual player bodies (NPCs) | ✅ Working (placeholder Protectron) |
+| Smooth interpolation + rotation of bodies | ✅ Working |
+| Cleanup body on player disconnect | ✅ Working |
+| Human / passive body (not a hostile robot) | 🟡 In progress |
 | Server (poll groups, admin console, chat/pos relay) | ✅ Working |
 | Test simulator (`F4MPSim`) | ✅ Working |
 

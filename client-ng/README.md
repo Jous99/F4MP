@@ -17,8 +17,12 @@ servidor y muestra a los demás jugadores.
 | Recibir la posición de los demás jugadores | ✅ |
 | Marcadores flotantes de jugadores remotos (mundo→pantalla) | ✅ |
 | Spawn de un actor de prueba (botón "Spawn dummy") | ✅ |
-| Cuerpos (NPC) por jugador remoto, moviéndose | 🟡 en progreso |
-| Rotación / animaciones / combate | ⬜ |
+| Cuerpos (NPC) por jugador remoto, moviéndose | ✅ |
+| Interpolación (movimiento suave, sin trompicones) | ✅ |
+| Limpieza del cuerpo al desconectar el jugador | ✅ |
+| Rotación (el cuerpo mira hacia donde se mueve) | ✅ |
+| Cuerpo humano/pasivo (ahora es un Protectron de prueba) | 🟡 en progreso |
+| Animaciones / combate / inventario | ⬜ |
 
 ## Cómo funciona
 
