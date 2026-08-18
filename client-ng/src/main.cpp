@@ -45,7 +45,7 @@ namespace F4MP
                         msg.x = pos.x;
                         msg.y = pos.y;
                         msg.z = pos.z;
-                        msg.angleZ = player->GetHeading();  // hacia donde miras (cursor)
+                        msg.angleZ = player->GetEyeHeading();  // hacia donde miras (cursor/camara)
                         msg.cellId = 0;
                         net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
                     }
@@ -161,7 +161,17 @@ namespace F4MP
             }
 
             // Rotacion: mirar hacia donde MIRA el jugador (heading de vista recibido).
-            actor->SetAngleOnReference(RE::NiPoint3{ 0.0f, 0.0f, it->second.angleZ });
+            // SetHeading fija el valor; UpdateActor3DPosition lo aplica al modelo 3D.
+            actor->SetHeading(it->second.angleZ);
+            actor->UpdateActor3DPosition();
+
+            // Log throttled (1/s) para depurar la orientacion.
+            static std::chrono::steady_clock::time_point lastLog{};
+            if (std::chrono::duration<float>(ahora - lastLog).count() > 1.0f) {
+                lastLog = ahora;
+                REX::INFO("[F4MP] jugador {} angleZ recibido={:.2f} rad, heading cuerpo={:.2f} rad",
+                    pid, it->second.angleZ, actor->GetHeading());
+            }
         }
 
         // 2. Resolver un spawn pendiente (el placeatme es asincrono).

@@ -212,7 +212,12 @@ void GameServer::HandlePlayerPosition(HSteamNetConnection conn, const PlayerPosi
         it->second.lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count() / 1000.0;
 
-        BroadcastMessage(MessageType::PlayerPosition, msg, sizeof(PlayerPositionMsg), it->second.id);
+        // Sobreescribimos el playerId con el ID autoritativo del servidor.
+        // Asi no dependemos de que el cliente lo ponga bien (el simulador no lo
+        // pone y saldria como "jugador 0"), y evitamos suplantaciones.
+        PlayerPositionMsg out = *msg;
+        out.playerId = it->second.id;
+        BroadcastMessage(MessageType::PlayerPosition, &out, sizeof(out), it->second.id);
     }
 }
 
