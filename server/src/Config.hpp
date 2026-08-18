@@ -25,6 +25,7 @@ public:
         // .value(clave, defecto) no revienta si la clave no esta en el config.
         Name = JSON.value("server-name", std::string("F4MP Server"));
         Master = JSON.value("master-server", std::string(""));  // URL, vacio = desactivado
+        TickRate = JSON.value("tick-rate", 60);                 // ticks/s del servidor
         Ip = JSON["ip"];
         Port = static_cast<uint16_t>(JSON["port"]);
         PlayerLimit = static_cast<uint16_t>(JSON["player-limit"]);
@@ -47,6 +48,7 @@ public:
 
     std::string Name;
     std::string Master;
+    int TickRate = 60;
     std::string Ip;
     uint16_t Port;
     uint16_t PlayerLimit;

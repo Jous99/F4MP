@@ -36,7 +36,7 @@ namespace F4MP
 
             if (net.IsConnected()) {
                 auto now = steady_clock::now();
-                if (duration_cast<milliseconds>(now - lastSend).count() >= 50) {  // 20/s
+                if (duration_cast<milliseconds>(now - lastSend).count() >= 33) {  // 30/s
                     lastSend = now;
                     if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                         const auto pos = player->GetPosition();
@@ -64,7 +64,9 @@ namespace F4MP
     // ---- PRUEBA de spawn: coloca un Protectron en tu posicion via Papyrus ----
     // Llama a ObjectReference.PlaceAtMe por la VM (independiente de version, sin
     // direcciones fijas). Es solo para comprobar que spawnear funciona.
-    static const uint32_t kDummyBase = 0x00106B09;  // Protectron (prueba)
+    // 0x00000007 = base del jugador (lleva tu apariencia). placeatme 7 => copia de tu personaje.
+    // (Antes 0x00106B09 = Protectron de prueba.)
+    static const uint32_t kDummyBase = 0x00000007;
 
     // Busca un actor de la base indicada cerca del jugador que NO este ya reclamado.
     static RE::Actor* FindNearbyActor(uint32_t baseFormId, const std::unordered_set<uint32_t>& exclude)
@@ -204,7 +206,7 @@ namespace F4MP
         // 3. Iniciar un spawn para el primer jugador remoto sin cuerpo.
         for (auto& [pid, pos] : remotos) {
             if (g_bodies.find(pid) == g_bodies.end()) {
-                RE::Console::ExecuteCommand("player.placeatme 00106B09 1");
+                RE::Console::ExecuteCommand("player.placeatme 7 1");
                 g_spawnPending = true;
                 g_spawnFor = pid;
                 g_spawnAt = std::chrono::steady_clock::now();
@@ -218,7 +220,7 @@ namespace F4MP
     {
         // 1. Spawnear via consola (funciona de forma fiable).
         REX::INFO("[F4MP] spawn: placeatme");
-        RE::Console::ExecuteCommand("player.placeatme 00106B09 1");
+        RE::Console::ExecuteCommand("player.placeatme 7 1");
 
         // 2. El spawn es asincrono: esperar un poco y, en el hilo principal,
         //    localizar el actor y moverlo a un lado (prueba de spawn+find+move).

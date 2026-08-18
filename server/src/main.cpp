@@ -49,6 +49,7 @@ int UMain() {
     GameServer::GetInstance().SetName(Config::getInstance().Name);
     GameServer::GetInstance().SetMaxPlayers(Config::getInstance().PlayerLimit);
     GameServer::GetInstance().SetMaster(Config::getInstance().Master);
+    GameServer::GetInstance().SetTickRate(Config::getInstance().TickRate);
 
     if (!GameServer::GetInstance().Initialize(port)) {
         spdlog::error("[Server] Failed to initialize server on port {}", port);
@@ -91,6 +92,7 @@ int main(int argc, char** argv) {
         Config["port"] = 7779;
         Config["run-as-service"] = false;
         Config["player-limit"] = 100;
+        Config["tick-rate"] = 60;  // ticks/s del servidor (mas alto = mas fluido)
         Config["log-location"] = "./logs.log";
         std::ofstream o{ConfigLocation};
         o << std::setw(4) << Config << std::endl;

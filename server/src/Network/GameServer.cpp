@@ -81,7 +81,7 @@ bool GameServer::Initialize(uint16_t port) {
     spdlog::info("  {}", m_name);
     spdlog::info("  Puerto      : {}", port);
     spdlog::info("  Jugadores   : 0/{}", m_maxPlayers);
-    spdlog::info("  Tick rate   : 30/s");
+    spdlog::info("  Tick rate   : {}/s", m_tickRate);
     spdlog::info("  Escuchando conexiones...");
     spdlog::info("  Escribe 'help' para ver los comandos.");
     spdlog::info("========================================");
@@ -124,7 +124,7 @@ void GameServer::Run() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration<float>(now - lastTick).count();
 
-        if (elapsed >= 1.0f / 30.0f) {
+        if (elapsed >= 1.0f / static_cast<float>(m_tickRate)) {
             Update();
             lastTick = now;
         }
@@ -366,8 +366,8 @@ void GameServer::PrintStatus() {
         std::lock_guard<std::mutex> lock(m_clientsMutex);
         players = GetPlayerCount();
     }
-    spdlog::info("[status] {} | activo {:02d}:{:02d}:{:02d} | jugadores {}/{} | 30 tick",
-        m_name, h, m, s, players, m_maxPlayers);
+    spdlog::info("[status] {} | activo {:02d}:{:02d}:{:02d} | jugadores {}/{} | {} tick",
+        m_name, h, m, s, players, m_maxPlayers, m_tickRate);
 }
 
 void GameServer::QueueCommand(const std::string& cmd) {
