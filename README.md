@@ -59,13 +59,13 @@ See **[CHECKLIST.md](CHECKLIST.md)** for the full roadmap.
 
 ### Server (`server/`) — to run
 
-- **Windows**. Keep the runtime DLLs next to the `.exe` (bundled in the build / artifact).
-- A `config.json` (created on first run): ip, port, `player-limit`, `server-name`, `master-server`.
+- **Windows or Linux**. On Windows, keep the runtime DLLs next to the `.exe` (bundled in the build / artifact).
+- A `config.json` (created on first run): ip, port, `player-limit`, `server-name`, `master-server`, `tick-rate`.
 
 ### Server — to build
 
-- **Visual Studio 2022** with C++ and **CMake** (ships with VS).
-- Dependencies vendored in `third_party/win-x64/` — **no vcpkg needed**. Double-click `build_server.bat`.
+- **Windows**: **Visual Studio 2022** with C++ and **CMake**. Dependencies vendored in `third_party/win-x64/` — **no vcpkg needed**. Double-click `build_server.bat`.
+- **Linux**: CMake + C++17 and `libgamenetworkingsockets-dev libspdlog-dev libcurl4-openssl-dev`. Run `./build_server_linux.sh`. See [`server/README.md`](server/README.md).
 
 ## Architecture
 
@@ -149,13 +149,13 @@ Consulta **[CHECKLIST.md](CHECKLIST.md)** para la hoja de ruta completa.
 
 ### Servidor (`server/`) — ejecutar
 
-- **Windows**. Junto al `.exe`, los DLLs de runtime (van incluidos en el build / artifact).
-- Un `config.json` (se crea la primera vez): ip, puerto, `player-limit`, `server-name`, `master-server`.
+- **Windows o Linux**. En Windows, junto al `.exe` los DLLs de runtime (van incluidos en el build / artifact).
+- Un `config.json` (se crea la primera vez): ip, puerto, `player-limit`, `server-name`, `master-server`, `tick-rate`.
 
 ### Servidor — compilar
 
-- **Visual Studio 2022** con C++ y **CMake** (viene con VS).
-- Dependencias ya incluidas en `third_party/win-x64/` — **no hace falta vcpkg**. Doble clic en `build_server.bat`.
+- **Windows**: **Visual Studio 2022** con C++ y **CMake**. Dependencias ya incluidas en `third_party/win-x64/` — **no hace falta vcpkg**. Doble clic en `build_server.bat`.
+- **Linux**: CMake + C++17 y `libgamenetworkingsockets-dev libspdlog-dev libcurl4-openssl-dev`. Ejecuta `./build_server_linux.sh`. Ver [`server/README.md`](server/README.md).
 
 ## Arquitectura
 

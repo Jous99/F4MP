@@ -12,14 +12,19 @@ The dedicated server for **F4MP**. A standalone Windows executable that accepts 
 
 ## Requirements
 
-- **Windows** (Linux support is disabled for now).
-- To build: **Visual Studio 2022** with "Desktop development with C++". Dependencies are vendored in the repo (`../third_party/win-x64`), so **vcpkg is not required**.
+Runs on **Windows and Linux** (GameNetworkingSockets is cross-platform).
+
+- **Windows** — build with **Visual Studio 2022** ("Desktop development with C++"). Dependencies are vendored in the repo (`../third_party/win-x64`), so **vcpkg is not required**.
+- **Linux** — build with **CMake** + a C++17 compiler. System dependencies (Debian/Ubuntu):
+  ```bash
+  sudo apt install build-essential cmake pkg-config \
+       libgamenetworkingsockets-dev libspdlog-dev libcurl4-openssl-dev
+  ```
+  If your distro doesn't package GameNetworkingSockets, build it from [source](https://github.com/ValveSoftware/GameNetworkingSockets) and install it.
 
 ## Building
 
-Easiest — from the repo root, double-click **`build_server.bat`**. It sets up the Visual Studio environment, builds with Ninja and copies the runtime DLLs next to the binary.
-
-Manual:
+**Windows** — from the repo root, double-click **`build_server.bat`**. It sets up the Visual Studio environment, builds with Ninja and copies the runtime DLLs next to the binary. Manual:
 
 ```bash
 cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -28,7 +33,18 @@ cmake --build server/build
 
 Output: `server/build/F4MPServer.exe`
 
-You can also grab a prebuilt binary from the **Actions** tab (artifact `F4MPServer`) or from a tagged **Release**.
+**Linux** — run **`./build_server_linux.sh`** from the repo root, or manually:
+
+```bash
+cmake -S server -B server/build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build server/build -j$(nproc)
+```
+
+Output: `server/build/F4MPServer`
+
+You can also grab a prebuilt Windows binary from the **Actions** tab (artifact `F4MPServer`) or from a tagged **Release**.
+
+> Cross-platform note: the heartbeat to the master server uses **WinHTTP** on Windows and **libcurl** on Linux (selected automatically at compile time).
 
 ## Running
 
@@ -67,14 +83,19 @@ El servidor dedicado de **F4MP**. Un ejecutable de Windows independiente que ace
 
 ## Requisitos
 
-- **Windows** (el soporte de Linux está desactivado por ahora).
-- Para compilar: **Visual Studio 2022** con "Desarrollo para el escritorio con C++". Las dependencias están incluidas en el repo (`../third_party/win-x64`), así que **no hace falta vcpkg**.
+Funciona en **Windows y Linux** (GameNetworkingSockets es multiplataforma).
+
+- **Windows** — compila con **Visual Studio 2022** ("Desarrollo para el escritorio con C++"). Las dependencias están incluidas en el repo (`../third_party/win-x64`), así que **no hace falta vcpkg**.
+- **Linux** — compila con **CMake** + un compilador C++17. Dependencias del sistema (Debian/Ubuntu):
+  ```bash
+  sudo apt install build-essential cmake pkg-config \
+       libgamenetworkingsockets-dev libspdlog-dev libcurl4-openssl-dev
+  ```
+  Si tu distro no empaqueta GameNetworkingSockets, compílalo desde [código](https://github.com/ValveSoftware/GameNetworkingSockets) e instálalo.
 
 ## Compilar
 
-Lo más fácil — desde la raíz del repo, doble clic en **`build_server.bat`**. Prepara el entorno de Visual Studio, compila con Ninja y copia los DLLs de runtime junto al binario.
-
-Manual:
+**Windows** — desde la raíz del repo, doble clic en **`build_server.bat`**. Prepara el entorno de Visual Studio, compila con Ninja y copia los DLLs de runtime junto al binario. Manual:
 
 ```bash
 cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -83,7 +104,18 @@ cmake --build server/build
 
 Salida: `server/build/F4MPServer.exe`
 
-También puedes descargar un binario ya compilado desde la pestaña **Actions** (artifact `F4MPServer`) o desde una **Release** con tag.
+**Linux** — ejecuta **`./build_server_linux.sh`** desde la raíz del repo, o a mano:
+
+```bash
+cmake -S server -B server/build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build server/build -j$(nproc)
+```
+
+Salida: `server/build/F4MPServer`
+
+También puedes descargar un binario de Windows ya compilado desde la pestaña **Actions** (artifact `F4MPServer`) o desde una **Release** con tag.
+
+> Nota multiplataforma: el heartbeat al master server usa **WinHTTP** en Windows y **libcurl** en Linux (se elige solo al compilar).
 
 ## Ejecutar
 

@@ -60,6 +60,7 @@ Today every body uses *your* local character (base `0x7`), so on one machine eve
 
 ## ⬜ Phase 6 — Server & infrastructure
 
+- ✅ Cross-platform server (Windows + Linux; heartbeat via WinHTTP/libcurl).
 - ⬜ Working ban/kick list persisted across restarts.
 - ⬜ Shared protocol header (today the structs are duplicated between client, server and simulator).
 - ⬜ Automated tests.
@@ -135,6 +136,7 @@ Ahora todos los cuerpos usan *tu* personaje local (base `0x7`), así que en una 
 
 ## ⬜ Fase 6 — Servidor e infraestructura
 
+- ✅ Servidor multiplataforma (Windows + Linux; heartbeat con WinHTTP/libcurl).
 - ⬜ Lista de baneos/kicks persistente entre reinicios.
 - ⬜ Header de protocolo compartido (hoy los structs están duplicados entre cliente, servidor y simulador).
 - ⬜ Tests automáticos.

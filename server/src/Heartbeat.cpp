@@ -1,12 +1,17 @@
 #include "Heartbeat.h"
 
+#include <string>
+#include <cstdlib>
+
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 #include <winhttp.h>
-#include <cstdlib>
-
 #pragma comment(lib, "winhttp.lib")
+#else
+#include <curl/curl.h>
+#endif
 
 namespace {
     std::string JsonEscape(const std::string& s) {
@@ -18,7 +23,6 @@ namespace {
         }
         return out;
     }
-    std::wstring Widen(const std::string& s) { return std::wstring(s.begin(), s.end()); }
 }
 
 namespace Heartbeat {
@@ -28,12 +32,23 @@ void Send(const std::string& url, const std::string& name,
 {
     if (url.empty()) return;
 
+    // Cuerpo JSON (comun a las dos plataformas).
+    const std::string body =
+        "{\"name\":\"" + JsonEscape(name) + "\",\"port\":" + std::to_string(port) +
+        ",\"players\":" + std::to_string(players) +
+        ",\"maxPlayers\":" + std::to_string(maxPlayers) + "}";
+
+    // URL sin barras finales.
+    std::string clean = url;
+    while (!clean.empty() && clean.back() == '/') clean.pop_back();
+
+#if defined(_WIN32)
+    // ---------- Windows: WinHTTP ----------
     // Parsear:  [http(s)://]host[:puerto]
-    std::string u = url;
+    std::string u = clean;
     bool https = false;
     if (u.rfind("https://", 0) == 0) { https = true; u = u.substr(8); }
     else if (u.rfind("http://", 0) == 0) { u = u.substr(7); }
-    while (!u.empty() && u.back() == '/') u.pop_back();
 
     std::string host = u;
     INTERNET_PORT hostPort = https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
@@ -43,12 +58,7 @@ void Send(const std::string& url, const std::string& name,
         hostPort = static_cast<INTERNET_PORT>(atoi(u.substr(colon + 1).c_str()));
     }
 
-    const std::string body =
-        "{\"name\":\"" + JsonEscape(name) + "\",\"port\":" + std::to_string(port) +
-        ",\"players\":" + std::to_string(players) +
-        ",\"maxPlayers\":" + std::to_string(maxPlayers) + "}";
-
-    const std::wstring whost = Widen(host);
+    const std::wstring whost(host.begin(), host.end());
 
     HINTERNET hSession = WinHttpOpen(L"F4MPServer/1.0",
         WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
@@ -71,6 +81,35 @@ void Send(const std::string& url, const std::string& name,
         WinHttpCloseHandle(hConnect);
     }
     WinHttpCloseHandle(hSession);
+
+#else
+    // ---------- Linux/otros: libcurl ----------
+    // Si no hay esquema, asumir http://
+    if (clean.rfind("http://", 0) != 0 && clean.rfind("https://", 0) != 0) {
+        clean = "http://" + clean;
+    }
+    const std::string endpoint = clean + "/heartbeat";
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return;
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_setopt(curl, CURLOPT_URL, endpoint.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "F4MPServer/1.0");
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);  // seguro en multihilo
+
+    curl_easy_perform(curl);  // ignoramos el resultado: es best-effort
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+#endif
 }
 
 }
