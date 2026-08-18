@@ -1,0 +1,12 @@
+services:
+  f4mp-server:
+    build: .
+    image: f4mp-server
+    container_name: f4mp
+    restart: unless-stopped
+    ports:
+      - "7779:7779/udp"        # cambia el puerto si usas otro en config.json
+    volumes:
+      - ./data:/data           # aqui vive config.json y el log (persistente)
+    stdin_open: true           # para poder escribir comandos de admin
+    tty: true

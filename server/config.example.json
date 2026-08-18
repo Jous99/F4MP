@@ -1,0 +1,10 @@
+{
+    "server-name": "My F4MP Server",
+    "master-server": "",
+    "ip": "0.0.0.0",
+    "port": 7779,
+    "run-as-service": false,
+    "player-limit": 100,
+    "tick-rate": 60,
+    "log-location": "./logs.log"
+}

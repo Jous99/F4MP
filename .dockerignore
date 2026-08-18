@@ -1,0 +1,16 @@
+# Solo necesitamos server/ para construir la imagen del servidor Linux.
+# Excluimos todo lo pesado / no relacionado.
+.git
+.deps
+.github
+build
+**/build
+client
+client-ng
+tools
+web
+third_party
+docs
+*.md
+*.bat
+*.log

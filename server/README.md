@@ -52,6 +52,28 @@ You can also grab a prebuilt Windows binary from the **Actions** tab (artifact `
 2. Run it. On first launch it creates a `config.json` and exits — edit it, then run again.
 3. Type `help` in the console for admin commands (`status`, `say`, `kick`, `stop`). Or press **Ctrl+C** to stop.
 
+## Docker (Linux host)
+
+Easiest way to self-host. From the repo root:
+
+```bash
+mkdir -p data
+cp server/config.example.json data/config.json   # ip is already 0.0.0.0 for Docker
+docker compose up -d --build
+```
+
+- The config and log live in `./data` (a mounted volume), so they persist across rebuilds.
+- **Important:** in Docker the server must bind `"ip": "0.0.0.0"` (the example config already does). `127.0.0.1` would only be reachable inside the container.
+- Change the port in `data/config.json` **and** in `docker-compose.yml` if you don't use 7779.
+- Admin console: `docker attach f4mp` (detach with Ctrl+P Ctrl+Q). Logs: `docker compose logs -f`.
+
+Without compose:
+
+```bash
+docker build -t f4mp-server .
+docker run -d --name f4mp -p 7779:7779/udp -v "$PWD/data:/data" f4mp-server
+```
+
 ## Configuration (`config.json`)
 
 | Key | Meaning | Default |
@@ -122,6 +144,28 @@ También puedes descargar un binario de Windows ya compilado desde la pestaña *
 1. Pon `F4MPServer.exe` junto a los DLLs de runtime de GameNetworkingSockets (los scripts de build y el artifact de CI los incluyen).
 2. Ejecútalo. La primera vez crea un `config.json` y sale — edítalo y vuelve a ejecutar.
 3. Escribe `help` en la consola para los comandos de administración (`status`, `say`, `kick`, `stop`). O pulsa **Ctrl+C** para parar.
+
+## Docker (host Linux)
+
+La forma más fácil de auto-hostear. Desde la raíz del repo:
+
+```bash
+mkdir -p data
+cp server/config.example.json data/config.json   # ya trae ip 0.0.0.0 para Docker
+docker compose up -d --build
+```
+
+- El config y el log viven en `./data` (volumen montado), así persisten entre recompilaciones.
+- **Importante:** en Docker el servidor debe escuchar en `"ip": "0.0.0.0"` (el config de ejemplo ya lo hace). Con `127.0.0.1` solo sería accesible dentro del contenedor.
+- Cambia el puerto en `data/config.json` **y** en `docker-compose.yml` si no usas el 7779.
+- Consola de admin: `docker attach f4mp` (sal con Ctrl+P Ctrl+Q). Logs: `docker compose logs -f`.
+
+Sin compose:
+
+```bash
+docker build -t f4mp-server .
+docker run -d --name f4mp -p 7779:7779/udp -v "$PWD/data:/data" f4mp-server
+```
 
 ## Configuración (`config.json`)
 
