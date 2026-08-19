@@ -253,8 +253,12 @@ namespace F4MP
             float animSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
             g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", animSpeed);
             g_lastOkDir   = actor->SetGraphVariableFloat("Direction", rp.moveDir);
-            actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             actor->SetGraphVariableBool("IsSprinting", rp.isSprinting);
+            // Agachado: fijar el ESTADO real del actor (no solo la variable del grafo).
+            if (actor->IsSneaking() != rp.isSneaking) {
+                actor->SetSneaking(rp.isSneaking);
+                actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
+            }
 
             // Log throttled (1/s) para depurar la orientacion.
             static std::chrono::steady_clock::time_point lastLog{};

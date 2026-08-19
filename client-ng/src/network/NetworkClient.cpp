@@ -178,6 +178,18 @@ void NetworkClient::PumpMessages() {
             } else if (header->type == MessageType::ConnectionRejected) {
                 REX::ERROR("[Network] Conexion rechazada por el servidor");
             } else if (header->type == MessageType::PlayerPosition) {
+                // Blindaje: solo procesar si el paquete trae el struct COMPLETO.
+                // Un cliente en version vieja manda menos bytes -> lo ignoramos
+                // (mejor que leer basura desalineada).
+                const size_t payloadSize = (size_t)msg->m_cbSize - sizeof(MessageHeader);
+                if (payloadSize < sizeof(PlayerPositionMsg)) {
+                    static bool warned = false;
+                    if (!warned) { warned = true;
+                        REX::WARN("[Network] Paquete de posicion antiguo ({} < {} bytes): cliente remoto en version vieja, actualizalo",
+                            payloadSize, sizeof(PlayerPositionMsg)); }
+                    msg->Release();
+                    continue;
+                }
                 const auto* pos = reinterpret_cast<const PlayerPositionMsg*>(payload);
                 if (pos->playerId != m_playerId) {  // ignorar la nuestra
                     std::lock_guard<std::mutex> lock(m_remoteMutex);
