@@ -122,6 +122,35 @@ namespace F4MP
     // ================= Cuerpos de jugadores remotos (Fase A) =================
     static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
+    static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
+
+    // Diagnostico: lista que variables del grafo de animacion EXISTEN en el cuerpo.
+    // Asi dejamos de adivinar nombres y usamos los reales.
+    static void DumpGraphVars(RE::Actor* actor)
+    {
+        static const char* kFloats[] = {
+            "Speed", "Direction", "SpeedSampled", "TurnDelta", "Turn", "MovementSpeed",
+            "SpeedRatio", "PitchDelta", "LeftRight", "ForwardBack", "walkSpeed",
+            "vertVelocity", "AnimSpeed", "fMovementDirection", "MoveSpeed"
+        };
+        static const char* kBools[] = {
+            "IsMoving", "bMoving", "IsSprinting", "bSprinting", "bIsSprinting", "IsSneaking",
+            "IsRunning", "bIsMovementDriven", "bAnimationDriven", "IsNPC", "bWantToSprint",
+            "IsSynced", "bIsSynced", "GraphControlsMovement", "IsFirstPerson", "bAllowRotation"
+        };
+        REX::INFO("[F4MP] ===== VOLCADO variables del grafo (existen) =====");
+        for (auto* n : kFloats) {
+            float o = 0.0f;
+            if (actor->GetGraphVariableImplFloat(n, o))
+                REX::INFO("[F4MP]   FLOAT {} = {:.3f}", n, o);
+        }
+        for (auto* n : kBools) {
+            bool o = false;
+            if (actor->GetGraphVariableImplBool(n, o))
+                REX::INFO("[F4MP]   BOOL  {} = {}", n, o);
+        }
+        REX::INFO("[F4MP] ===== fin del volcado =====");
+    }
     static bool g_spawnPending = false;
     static uint32_t g_spawnFor = 0;
     static std::chrono::steady_clock::time_point g_spawnAt;
@@ -188,6 +217,15 @@ namespace F4MP
             auto* form = RE::TESForm::GetFormByID(fid);
             auto* actor = form ? form->As<RE::Actor>() : nullptr;
             if (!actor) continue;
+
+            // Una sola vez, cuando el grafo ya esta cargado, volcar sus variables.
+            if (!g_graphDumped) {
+                float probe = 0.0f;
+                if (actor->GetGraphVariableImplFloat("Speed", probe)) {  // grafo listo
+                    g_graphDumped = true;
+                    DumpGraphVars(actor);
+                }
+            }
 
             const RE::NiPoint3 objetivo{ it->second.x, it->second.y, it->second.z };
             const RE::NiPoint3 actual = actor->GetPosition();
