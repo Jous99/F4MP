@@ -235,26 +235,26 @@ namespace F4MP
             if (dist > 1500.0f) {
                 // Salto grande (spawn inicial o fast travel): teletransportar.
                 actor->SetPosition(objetivo, true);
-                actor->UpdateActor3DPosition();
             } else {
-                // Paso interpolado hacia el objetivo.
-                RE::NiPoint3 step{ delta.x * alpha, delta.y * alpha, delta.z * alpha };
-                // Mover POR EL CONTROLADOR (no teletransportar): asi el juego
-                // detecta movimiento real y reproduce la animacion de andar/correr.
-                actor->Move(dt, step, false);
+                // Interpolar suave hacia el objetivo (seguimiento fiable).
+                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
+                                    actual.y + delta.y * alpha,
+                                    actual.z + delta.z * alpha };
+                actor->SetPosition(nueva, true);
             }
 
-            // Rotacion: mirar hacia donde MIRA el jugador. Sin UpdateActor3DPosition
-            // cada frame (cortaba la animacion); al estar el actor "vivo" y moviendose,
-            // SetHeading se refleja solo.
+            // Rotacion: mirar hacia donde MIRA el jugador.
             actor->SetHeading(it->second.angleZ);
+            actor->UpdateActor3DPosition();
 
-            // --- Animaciones: pistas por nivel (idempotentes) ---
+            // --- Animaciones: variables REALES del grafo (del volcado), por nivel ---
             const auto& rp = it->second;
-            g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", rp.speed);
+            // Clamp de velocidad por si llega basura (sender en version vieja, etc.).
+            float animSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
+            g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", animSpeed);
             g_lastOkDir   = actor->SetGraphVariableFloat("Direction", rp.moveDir);
             actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
-            actor->SetGraphVariableBool("bIsSprinting", rp.isSprinting);
+            actor->SetGraphVariableBool("IsSprinting", rp.isSprinting);
 
             // Log throttled (1/s) para depurar la orientacion.
             static std::chrono::steady_clock::time_point lastLog{};
