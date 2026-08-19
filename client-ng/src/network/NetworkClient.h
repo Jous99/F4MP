@@ -53,9 +53,14 @@ struct PlayerPositionMsg {
     float x, y, z;
     float velocityX, velocityY, velocityZ;
     float angleZ;        // heading de vista (rad): hacia donde mira el jugador
+    float speed;         // velocidad de movimiento (unidades/seg)
+    float moveDir;       // direccion del movimiento relativa al facing (rad, 0 = adelante)
     uint32_t cellId;
+    bool isMoving;
     bool isRunning;
+    bool isSprinting;
     bool isSneaking;
+    bool isJumping;
 };
 
 struct ChatMessageMsg {

@@ -37,7 +37,8 @@ struct ConnectionRequestMsg { char playerName[64]; uint32_t protocolVersion; };
 struct ConnectionAcceptedMsg { uint32_t playerId; uint32_t currentPlayers; uint32_t maxPlayers; };
 struct PlayerPositionMsg {
     uint32_t playerId; float x, y, z; float velocityX, velocityY, velocityZ;
-    float angleZ; uint32_t cellId; bool isRunning; bool isSneaking;
+    float angleZ; float speed; float moveDir; uint32_t cellId;
+    bool isMoving; bool isRunning; bool isSprinting; bool isSneaking; bool isJumping;
 };
 struct ChatMessageMsg { uint32_t senderId; char message[256]; uint8_t channel; };
 #pragma pack(pop)
@@ -172,6 +173,13 @@ int main(int argc, char** argv) {
                     pos.z = 0.0f;
                 }
                 pos.angleZ = t;   // gira lentamente para ver la rotacion
+                // Estado de movimiento para probar animaciones:
+                if (fixedPos) {
+                    pos.isMoving = false; pos.speed = 0.0f;   // quieto (idle)
+                } else {
+                    pos.isMoving = true; pos.isRunning = true; // circulo => andando/corriendo
+                    pos.speed = 200.0f; pos.moveDir = 0.0f;
+                }
                 pos.cellId = 1;
                 SendPacket(c, MessageType::PlayerPosition, &pos, sizeof(pos));
             }

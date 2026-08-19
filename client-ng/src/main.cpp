@@ -37,17 +37,45 @@ namespace F4MP
             if (net.IsConnected()) {
                 auto now = steady_clock::now();
                 if (duration_cast<milliseconds>(now - lastSend).count() >= 33) {  // 30/s
-                    lastSend = now;
+                    static RE::NiPoint3 s_lastPos{};
+                    static bool s_havePos = false;
+                    static auto s_lastPosTime = now;
+                    const float sendDt = std::chrono::duration<float>(now - s_lastPosTime).count();
+                    s_lastPosTime = now;
+
                     if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                         const auto pos = player->GetPosition();
+                        const float facing = player->GetEyeHeading();
+
+                        // Velocidad y direccion a partir del desplazamiento real.
+                        float speed = 0.0f, moveDir = 0.0f;
+                        if (s_havePos && sendDt > 0.0001f && sendDt < 1.0f) {
+                            float dx = pos.x - s_lastPos.x, dy = pos.y - s_lastPos.y;
+                            float horizDist = std::sqrt(dx * dx + dy * dy);
+                            speed = horizDist / sendDt;
+                            if (horizDist > 1.0f) moveDir = std::atan2(dx, dy) - facing;  // 0 = adelante
+                        }
+                        s_lastPos = pos;
+                        s_havePos = true;
+
                         Network::PlayerPositionMsg msg{};
                         msg.playerId = net.GetPlayerId();
                         msg.x = pos.x;
                         msg.y = pos.y;
                         msg.z = pos.z;
-                        msg.angleZ = player->GetEyeHeading();  // hacia donde miras (cursor/camara)
+                        msg.angleZ = facing;  // hacia donde miras (cursor/camara)
+                        msg.speed = speed;
+                        msg.moveDir = moveDir;
+                        msg.isMoving = speed > 10.0f;
+                        msg.isSprinting = speed > 300.0f;   // umbral aprox. de sprint
+                        msg.isRunning = speed > 150.0f && !msg.isSprinting;
+                        msg.isSneaking = player->IsSneaking();
+                        msg.isJumping = false;              // TODO: detectar salto/aire
                         msg.cellId = 0;
+                        lastSend = now;
                         net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
+                    } else {
+                        lastSend = now;
                     }
                 }
                 // Sincronizar cuerpos en el hilo PRINCIPAL ~60/s (para interpolar suave).
@@ -93,6 +121,7 @@ namespace F4MP
 
     // ================= Cuerpos de jugadores remotos (Fase A) =================
     static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
+    static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_spawnPending = false;
     static uint32_t g_spawnFor = 0;
     static std::chrono::steady_clock::time_point g_spawnAt;
@@ -168,25 +197,34 @@ namespace F4MP
             if (dist > 1500.0f) {
                 // Salto grande (spawn inicial o fast travel): teletransportar.
                 actor->SetPosition(objetivo, true);
+                actor->UpdateActor3DPosition();
             } else {
-                // Interpolar hacia el objetivo.
-                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
-                                    actual.y + delta.y * alpha,
-                                    actual.z + delta.z * alpha };
-                actor->SetPosition(nueva, true);
+                // Paso interpolado hacia el objetivo.
+                RE::NiPoint3 step{ delta.x * alpha, delta.y * alpha, delta.z * alpha };
+                // Mover POR EL CONTROLADOR (no teletransportar): asi el juego
+                // detecta movimiento real y reproduce la animacion de andar/correr.
+                actor->Move(dt, step, false);
             }
 
-            // Rotacion: mirar hacia donde MIRA el jugador (heading de vista recibido).
-            // SetHeading fija el valor; UpdateActor3DPosition lo aplica al modelo 3D.
+            // Rotacion: mirar hacia donde MIRA el jugador. Sin UpdateActor3DPosition
+            // cada frame (cortaba la animacion); al estar el actor "vivo" y moviendose,
+            // SetHeading se refleja solo.
             actor->SetHeading(it->second.angleZ);
-            actor->UpdateActor3DPosition();
+
+            // --- Animaciones: pistas por nivel (idempotentes) ---
+            const auto& rp = it->second;
+            g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", rp.speed);
+            g_lastOkDir   = actor->SetGraphVariableFloat("Direction", rp.moveDir);
+            actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
+            actor->SetGraphVariableBool("bIsSprinting", rp.isSprinting);
 
             // Log throttled (1/s) para depurar la orientacion.
             static std::chrono::steady_clock::time_point lastLog{};
             if (std::chrono::duration<float>(ahora - lastLog).count() > 1.0f) {
                 lastLog = ahora;
-                REX::INFO("[F4MP] jugador {} angleZ recibido={:.2f} rad, heading cuerpo={:.2f} rad",
-                    pid, it->second.angleZ, actor->GetHeading());
+                REX::INFO("[F4MP] jugador {} speed={:.0f} moviendo={} agachado={} | grafo Speed_ok={} Dir_ok={}",
+                    pid, it->second.speed, it->second.isMoving, it->second.isSneaking,
+                    g_lastOkSpeed, g_lastOkDir);
             }
         }
 
