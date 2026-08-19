@@ -121,6 +121,7 @@ namespace F4MP
 
     // ================= Cuerpos de jugadores remotos (Fase A) =================
     static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
+    static std::unordered_map<uint32_t, float> g_lastHeading;    // playerId -> ultimo heading aplicado
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
 
@@ -179,6 +180,7 @@ namespace F4MP
                 REX::INFO("[F4MP] desconectado: {} cuerpo(s) despawneado(s)", g_bodies.size());
                 g_bodies.clear();
             }
+            g_lastHeading.clear();
             return;
         }
         auto remotos = net.GetRemotePlayers();
@@ -207,6 +209,7 @@ namespace F4MP
             RE::Console::ExecuteCommand("disable");
             RE::Console::ExecuteCommand("markfordelete");
             g_bodies.erase(pid);
+            g_lastHeading.erase(pid);
             REX::INFO("[F4MP] cuerpo eliminado (jugador {} desconectado, actor {:#x})", pid, fid);
         }
 
@@ -244,8 +247,14 @@ namespace F4MP
             }
 
             // Rotacion: mirar hacia donde MIRA el jugador.
+            // Solo re-posamos (UpdateActor3DPosition) cuando el heading CAMBIA, para
+            // no machacar la animacion cada frame (agacharse, andar, etc.).
             actor->SetHeading(it->second.angleZ);
-            actor->UpdateActor3DPosition();
+            auto itH = g_lastHeading.find(pid);
+            if (itH == g_lastHeading.end() || std::abs(it->second.angleZ - itH->second) > 0.03f) {
+                actor->UpdateActor3DPosition();
+                g_lastHeading[pid] = it->second.angleZ;
+            }
 
             // --- Animaciones: variables REALES del grafo (del volcado), por nivel ---
             const auto& rp = it->second;
