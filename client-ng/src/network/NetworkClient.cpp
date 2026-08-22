@@ -91,6 +91,7 @@ void NetworkClient::Disconnect() {
         std::lock_guard<std::mutex> rlock(m_remoteMutex);
         m_remotePlayers.clear();   // olvidar a los remotos: si no, quedan fantasmas
         m_remoteLastSeen.clear();
+        m_remoteAppearance.clear();
     }
     REX::INFO("[Network] Desconectado");
 }
@@ -146,6 +147,7 @@ void NetworkClient::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_
                 std::lock_guard<std::mutex> rlock(m_remoteMutex);
                 m_remotePlayers.clear();   // olvidar a los remotos al cerrarse la conexion
                 m_remoteLastSeen.clear();
+                m_remoteAppearance.clear();
             }
             break;
 
@@ -201,10 +203,29 @@ void NetworkClient::PumpMessages() {
                             pos->playerId, pos->x, pos->y, pos->z);
                     }
                 }
+            } else if (header->type == MessageType::PlayerAppearance) {
+                const size_t payloadSize = (size_t)msg->m_cbSize - sizeof(MessageHeader);
+                if (payloadSize >= sizeof(PlayerAppearanceMsg)) {
+                    const auto* ap = reinterpret_cast<const PlayerAppearanceMsg*>(payload);
+                    if (ap->playerId != m_playerId) {
+                        std::lock_guard<std::mutex> lock(m_remoteMutex);
+                        m_remoteAppearance[ap->playerId] = *ap;
+                        REX::INFO("[Network] Apariencia de jugador {}: sexo={} raza={:#x} pelo={:#x} headparts={}",
+                            ap->playerId, ap->sex, ap->raceFormID, ap->hairColor, ap->numHeadParts);
+                    }
+                }
             }
         }
         msg->Release();
     }
+}
+
+bool NetworkClient::GetAppearance(uint32_t playerId, PlayerAppearanceMsg& out) {
+    std::lock_guard<std::mutex> lock(m_remoteMutex);
+    auto it = m_remoteAppearance.find(playerId);
+    if (it == m_remoteAppearance.end()) return false;
+    out = it->second;
+    return true;
 }
 
 std::unordered_map<uint32_t, PlayerPositionMsg> NetworkClient::GetRemotePlayers() {

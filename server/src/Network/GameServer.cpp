@@ -232,6 +232,39 @@ void GameServer::HandleChatMessage(HSteamNetConnection conn, const ChatMessageMs
     }
 }
 
+void GameServer::HandlePlayerAppearance(HSteamNetConnection conn, const PlayerAppearanceMsg* msg) {
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    auto it = m_clients.find(conn);
+    if (it == m_clients.end()) return;
+
+    // Guardar con el id autoritativo del servidor.
+    PlayerAppearanceMsg mine = *msg;
+    mine.playerId = it->second.id;
+    it->second.appearance = mine;
+    it->second.hasAppearance = true;
+
+    // 1. Repartir mi apariencia a los demas.
+    BroadcastMessage(MessageType::PlayerAppearance, &mine, sizeof(mine), it->second.id);
+
+    // 2. Enviar al recien llegado las apariencias ya conocidas (directo a su conn,
+    //    sin SendMessageToClient para no re-bloquear el mutex).
+    for (auto& [c, cl] : m_clients) {
+        if (c == conn || !cl.hasAppearance) continue;
+        MessageHeader header;
+        header.type = MessageType::PlayerAppearance;
+        header.size = sizeof(MessageHeader) + sizeof(cl.appearance);
+        header.timestamp = 0;
+        std::vector<uint8_t> buffer(header.size);
+        memcpy(buffer.data(), &header, sizeof(MessageHeader));
+        memcpy(buffer.data() + sizeof(MessageHeader), &cl.appearance, sizeof(cl.appearance));
+        m_sockets->SendMessageToConnection(conn, buffer.data(), (uint32_t)buffer.size(),
+            k_nSteamNetworkingSend_Reliable, nullptr);
+    }
+
+    spdlog::info("[appearance] {} (ID {}): sexo={} headparts={}",
+        it->second.name.c_str(), it->second.id, mine.sex, mine.numHeadParts);
+}
+
 void GameServer::BroadcastMessage(MessageType type, const void* data, uint32_t size, uint32_t excludeId) {
     MessageHeader header;
     header.type = type;
@@ -293,6 +326,9 @@ void GameServer::ProcessMessages() {
                     break;
                 case MessageType::PlayerPosition:
                     HandlePlayerPosition(msg->m_conn, reinterpret_cast<const PlayerPositionMsg*>(payload));
+                    break;
+                case MessageType::PlayerAppearance:
+                    HandlePlayerAppearance(msg->m_conn, reinterpret_cast<const PlayerAppearanceMsg*>(payload));
                     break;
                 case MessageType::ChatMessage:
                     HandleChatMessage(msg->m_conn, reinterpret_cast<const ChatMessageMsg*>(payload));

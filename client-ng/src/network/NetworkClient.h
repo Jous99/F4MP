@@ -23,6 +23,7 @@ enum class MessageType : uint16_t {
     PlayerPosition = 10,
     PlayerRotation = 11,
     PlayerAnimation = 12,
+    PlayerAppearance = 13,
     ChatMessage = 20,
     DamageDealt = 30,
     EntitySpawn = 40,
@@ -63,6 +64,18 @@ struct PlayerPositionMsg {
     bool isJumping;
 };
 
+// Apariencia del jugador (Fase 2A): se envia una vez al conectar y se reparte.
+struct PlayerAppearanceMsg {
+    uint32_t playerId;
+    uint32_t raceFormID;
+    uint32_t hairColor;      // RGBA empaquetado (BGSColorForm::color)
+    int32_t  sex;            // 0 male, 1 female, -1 none
+    uint8_t  skinR, skinG, skinB, skinA;  // bodyTintColor del NPC
+    uint8_t  numHeadParts;
+    uint8_t  _pad[3];
+    uint32_t headParts[16];  // formIDs de head parts (pelo, ojos, barba, cejas...)
+};
+
 struct ChatMessageMsg {
     uint32_t senderId;
     char message[256];
@@ -98,6 +111,9 @@ public:
     // Copia del estado de los jugadores remotos (id -> ultima posicion).
     std::unordered_map<uint32_t, PlayerPositionMsg> GetRemotePlayers();
 
+    // Apariencia recibida de un jugador remoto. Devuelve false si aun no llego.
+    bool GetAppearance(uint32_t playerId, PlayerAppearanceMsg& out);
+
 private:
     NetworkClient() = default;
 
@@ -121,6 +137,7 @@ private:
     std::mutex m_remoteMutex;
     std::unordered_map<uint32_t, PlayerPositionMsg> m_remotePlayers;
     std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> m_remoteLastSeen;
+    std::unordered_map<uint32_t, PlayerAppearanceMsg> m_remoteAppearance;
 };
 
 }

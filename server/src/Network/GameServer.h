@@ -22,6 +22,7 @@ enum class MessageType : uint16_t {
     PlayerPosition = 10,
     PlayerRotation = 11,
     PlayerAnimation = 12,
+    PlayerAppearance = 13,
     ChatMessage = 20,
     DamageDealt = 30,
     EntitySpawn = 40,
@@ -62,6 +63,17 @@ struct PlayerPositionMsg {
     bool isJumping;
 };
 
+struct PlayerAppearanceMsg {
+    uint32_t playerId;
+    uint32_t raceFormID;
+    uint32_t hairColor;
+    int32_t  sex;
+    uint8_t  skinR, skinG, skinB, skinA;
+    uint8_t  numHeadParts;
+    uint8_t  _pad[3];
+    uint32_t headParts[16];
+};
+
 struct ChatMessageMsg {
     uint32_t senderId;
     char message[256];
@@ -92,6 +104,8 @@ struct ClientInfo {
     uint32_t cellId;
     bool isConnected;
     double lastUpdate;
+    bool hasAppearance = false;
+    PlayerAppearanceMsg appearance{};
 };
 
 class GameServer {
@@ -130,6 +144,7 @@ private:
 
     void HandleConnectionRequest(HSteamNetConnection conn, const ConnectionRequestMsg* msg);
     void HandlePlayerPosition(HSteamNetConnection conn, const PlayerPositionMsg* msg);
+    void HandlePlayerAppearance(HSteamNetConnection conn, const PlayerAppearanceMsg* msg);
     void HandleChatMessage(HSteamNetConnection conn, const ChatMessageMsg* msg);
 
     void BroadcastMessage(MessageType type, const void* data, uint32_t size, uint32_t excludeId = 0);

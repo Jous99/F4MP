@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <unordered_map>
@@ -23,6 +24,35 @@ namespace F4MP
 
     static void BodiesSync();  // declaracion adelantada (se define mas abajo)
 
+    // Captura la apariencia del jugador local (Fase 2A) para enviarla al servidor.
+    static Network::PlayerAppearanceMsg CaptureAppearance(uint32_t myId)
+    {
+        Network::PlayerAppearanceMsg a{};
+        a.playerId = myId;
+        a.sex = -1;
+        auto* pl = RE::PlayerCharacter::GetSingleton();
+        if (!pl) return a;
+        a.sex = static_cast<int32_t>(pl->GetSex());
+        if (pl->race) a.raceFormID = pl->race->GetFormID();
+
+        auto* npc = pl->GetNPC();
+        if (npc) {
+            a.skinR = static_cast<uint8_t>(npc->bodyTintColorR);
+            a.skinG = static_cast<uint8_t>(npc->bodyTintColorG);
+            a.skinB = static_cast<uint8_t>(npc->bodyTintColorB);
+            a.skinA = static_cast<uint8_t>(npc->bodyTintColorA);
+            if (npc->headRelatedData && npc->headRelatedData->hairColor)
+                a.hairColor = npc->headRelatedData->hairColor->color;
+
+            auto hp = npc->GetHeadParts();
+            uint8_t n = static_cast<uint8_t>(std::min<size_t>(hp.size(), 16));
+            a.numHeadParts = n;
+            for (uint8_t i = 0; i < n; ++i)
+                a.headParts[i] = hp[i] ? hp[i]->GetFormID() : 0;
+        }
+        return a;
+    }
+
     // ---- Hilo de red: procesa mensajes, envia la posicion y sincroniza cuerpos ----
     static void NetThread()
     {
@@ -34,8 +64,23 @@ namespace F4MP
             auto& net = Network::NetworkClient::GetInstance();
             net.PumpMessages();
 
+            static bool s_sentAppearance = false;
             if (net.IsConnected()) {
                 auto now = steady_clock::now();
+
+                // Enviar nuestra apariencia UNA vez al conectar (Fase 2A).
+                if (!s_sentAppearance) {
+                    F4SE::GetTaskInterface()->AddTask([]() {
+                        auto& net2 = Network::NetworkClient::GetInstance();
+                        if (!net2.IsConnected()) return;
+                        auto ap = CaptureAppearance(net2.GetPlayerId());
+                        net2.SendPacket(Network::MessageType::PlayerAppearance, &ap, sizeof(ap));
+                        REX::INFO("[F4MP] apariencia enviada (sexo={} raza={:#x} headparts={})",
+                            ap.sex, ap.raceFormID, ap.numHeadParts);
+                    });
+                    s_sentAppearance = true;
+                }
+
                 if (duration_cast<milliseconds>(now - lastSend).count() >= 33) {  // 30/s
                     static RE::NiPoint3 s_lastPos{};
                     static bool s_havePos = false;
@@ -83,6 +128,8 @@ namespace F4MP
                     lastSync = now;
                     F4SE::GetTaskInterface()->AddTask([]() { BodiesSync(); });
                 }
+            } else {
+                s_sentAppearance = false;  // al reconectar, reenviar la apariencia
             }
 
             std::this_thread::sleep_for(milliseconds(8));
