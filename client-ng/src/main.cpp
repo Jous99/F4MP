@@ -169,6 +169,12 @@ namespace F4MP
     // ================= Cuerpos de jugadores remotos (Fase A) =================
     static std::unordered_map<uint32_t, uint32_t> g_bodies;      // playerId -> formID del actor
     static std::unordered_map<uint32_t, float> g_lastHeading;    // playerId -> ultimo heading aplicado
+
+    // Ultimo estado de movimiento aplicado a cada cuerpo. Sirve para disparar los
+    // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
+    // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
+    struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false; };
+    static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
 
@@ -228,6 +234,7 @@ namespace F4MP
                 g_bodies.clear();
             }
             g_lastHeading.clear();
+            g_animState.clear();
             return;
         }
         auto remotos = net.GetRemotePlayers();
@@ -257,6 +264,7 @@ namespace F4MP
             RE::Console::ExecuteCommand("markfordelete");
             g_bodies.erase(pid);
             g_lastHeading.erase(pid);
+            g_animState.erase(pid);
             REX::INFO("[F4MP] cuerpo eliminado (jugador {} desconectado, actor {:#x})", pid, fid);
         }
 
@@ -284,13 +292,17 @@ namespace F4MP
 
             if (dist > 1500.0f) {
                 // Salto grande (spawn inicial o fast travel): teletransportar.
+                // Aqui SI usamos SetPosition: no queremos "caminar" 2000 unidades.
                 actor->SetPosition(objetivo, true);
             } else {
-                // Interpolar suave hacia el objetivo (seguimiento fiable).
-                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
-                                    actual.y + delta.y * alpha,
-                                    actual.z + delta.z * alpha };
-                actor->SetPosition(nueva, true);
+                // Movimiento normal: en vez de COLOCAR el cuerpo (teletransporte por
+                // tick, que no anima), lo MOVEMOS por el motor con Actor::Move. Este
+                // recibe un delta y desplaza al actor a traves de su controlador
+                // fisico; asi el motor ve una velocidad real y el grafo de animacion
+                // reproduce andar/correr por si solo, con los pies bien.
+                // El paso es el mismo delta suavizado que antes daba SetPosition.
+                RE::NiPoint3 paso{ delta.x * alpha, delta.y * alpha, delta.z * alpha };
+                actor->Move(dt, paso, false);
             }
 
             // Rotacion: mirar hacia donde MIRA el jugador.
@@ -314,6 +326,31 @@ namespace F4MP
             if (actor->IsSneaking() != rp.isSneaking) {
                 actor->SetSneaking(rp.isSneaking);
                 actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
+            }
+
+            // --- Animaciones por EVENTOS del grafo: disparar SOLO en los cambios ---
+            // Las variables de arriba (Speed/Direction) afinan la mezcla, pero por si
+            // solas casi nunca sacan al cuerpo del idle (el actor esta teletransportado,
+            // para el motor "no se mueve"). Los eventos NotifyAnimationGraph fuerzan la
+            // TRANSICION de estado: idle <-> andar <-> sprint. Los disparamos solo cuando
+            // el estado cambia; mandarlos cada tick reiniciaria la animacion sin parar.
+            // (El agacharse ya se gestiona arriba con SetSneaking.)
+            BodyAnimState& st = g_animState[pid];
+            if (!st.init) {
+                // Primer tick de este cuerpo: sincronizar el estado sin disparar
+                // transiciones falsas (aun no sabemos el estado "anterior").
+                st.moving = rp.isMoving;
+                st.sprinting = rp.isSprinting;
+                st.init = true;
+            } else {
+                if (rp.isMoving != st.moving) {
+                    actor->NotifyAnimationGraphImpl(rp.isMoving ? "moveStart" : "moveStop");
+                    st.moving = rp.isMoving;
+                }
+                if (rp.isSprinting != st.sprinting) {
+                    actor->NotifyAnimationGraphImpl(rp.isSprinting ? "SprintStart" : "SprintStop");
+                    st.sprinting = rp.isSprinting;
+                }
             }
 
             // Log throttled (1/s) para depurar la orientacion.
