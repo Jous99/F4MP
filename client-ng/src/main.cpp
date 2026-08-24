@@ -292,17 +292,17 @@ namespace F4MP
 
             if (dist > 1500.0f) {
                 // Salto grande (spawn inicial o fast travel): teletransportar.
-                // Aqui SI usamos SetPosition: no queremos "caminar" 2000 unidades.
                 actor->SetPosition(objetivo, true);
             } else {
-                // Movimiento normal: en vez de COLOCAR el cuerpo (teletransporte por
-                // tick, que no anima), lo MOVEMOS por el motor con Actor::Move. Este
-                // recibe un delta y desplaza al actor a traves de su controlador
-                // fisico; asi el motor ve una velocidad real y el grafo de animacion
-                // reproduce andar/correr por si solo, con los pies bien.
-                // El paso es el mismo delta suavizado que antes daba SetPosition.
-                RE::NiPoint3 paso{ delta.x * alpha, delta.y * alpha, delta.z * alpha };
-                actor->Move(dt, paso, false);
+                // Seguimiento suave por interpolacion (estable y fiable). NOTA: esto
+                // NO hace que el cuerpo anime por si solo (el motor no lo ve "moverse");
+                // la animacion la intentamos aparte con las variables/eventos del grafo.
+                // Probamos primero Actor::Move pero peleaba con la IA del NPC y salia a
+                // tirones, asi que volvemos a este seguimiento fiable.
+                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
+                                    actual.y + delta.y * alpha,
+                                    actual.z + delta.z * alpha };
+                actor->SetPosition(nueva, true);
             }
 
             // Rotacion: mirar hacia donde MIRA el jugador.
@@ -344,11 +344,15 @@ namespace F4MP
                 st.init = true;
             } else {
                 if (rp.isMoving != st.moving) {
-                    actor->NotifyAnimationGraphImpl(rp.isMoving ? "moveStart" : "moveStop");
+                    const char* ev = rp.isMoving ? "moveStart" : "moveStop";
+                    bool ok = actor->NotifyAnimationGraphImpl(ev);
+                    REX::INFO("[F4MP] anim jugador {}: evento '{}' -> {}", pid, ev, ok);
                     st.moving = rp.isMoving;
                 }
                 if (rp.isSprinting != st.sprinting) {
-                    actor->NotifyAnimationGraphImpl(rp.isSprinting ? "SprintStart" : "SprintStop");
+                    const char* ev = rp.isSprinting ? "SprintStart" : "SprintStop";
+                    bool ok = actor->NotifyAnimationGraphImpl(ev);
+                    REX::INFO("[F4MP] anim jugador {}: evento '{}' -> {}", pid, ev, ok);
                     st.sprinting = rp.isSprinting;
                 }
             }
