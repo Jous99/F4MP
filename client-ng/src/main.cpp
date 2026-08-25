@@ -289,31 +289,21 @@ namespace F4MP
             const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
 
             if (dist > 1500.0f) {
-                // UNICO teletransporte: al aparecer (spawn) o en viaje rapido, cuando el
-                // cuerpo esta lejisimos. En el movimiento normal NO se teletransporta.
+                // Teletransporte: al aparecer (spawn) o en viaje rapido (cuerpo lejisimos).
                 actor->SetPosition(objetivo, true);
             } else {
-                // Movimiento REAL, pero SOLO EN HORIZONTAL (X/Y). La altura (Z) la deja el
-                // motor por gravedad. Si tambien empujamos en vertical, el controlador
-                // fisico se pelea con el suelo (la Z del jugador y la del cuerpo no coinciden
-                // exacto) y acaba lanzando/hundiendo el cuerpo fuera del area -> el modelo se
-                // descarga y desaparece dejando solo el marcador. Por eso NO tocamos la Z.
-                //   spd  = velocidad del jugador (si no llega, la deducimos del hueco).
-                //   paso = cuanto avanzar este frame en horizontal, sin pasarnos.
-                const float dhx = delta.x, dhy = delta.y;
-                const float distH = std::sqrt(dhx * dhx + dhy * dhy);
-                if (distH > 0.5f) {
-                    float spd = (it->second.speed > 1.0f && it->second.speed < 1000.0f) ? it->second.speed : (distH / dt);
-                    float paso = std::min<float>(distH, spd * dt);  // <float> evita la macro min de <windows.h>
-                    RE::NiPoint3 mov{ dhx / distH * paso, dhy / distH * paso, 0.0f };
-                    actor->Move(dt, mov, false);
-                }
-                // Correccion de altura suave y solo si se desvia mucho (escaleras, caidas):
-                // recolocamos la Z sin tocar X/Y, para no desincronizar el piso.
-                if (std::fabs(delta.z) > 150.0f) {
-                    const RE::NiPoint3 p = actor->GetPosition();
-                    actor->SetPosition(RE::NiPoint3{ p.x, p.y, objetivo.z }, true);
-                }
+                // Seguimiento EXACTO por posicion: el cuerpo queda sincronizado con el marcador
+                // (la posicion real de red). Nos acercamos suave al objetivo cada tick.
+                // OJO: descartamos Actor::Move porque mueve al cuerpo en SU direccion de vista
+                // (siempre hacia delante), no en la del mundo -> se iba a otro lado.
+                // NOTA: esto por si solo NO anima las piernas (el motor no ve al cuerpo
+                // "moverse"); la animacion se resolvera aparte (inyectando velocidad al
+                // controlador fisico) sin cambiar esta posicion exacta.
+                const float alpha = 1.0f - std::exp(-dt / 0.12f);  // suavizado ~0.12 s
+                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
+                                    actual.y + delta.y * alpha,
+                                    actual.z + delta.z * alpha };
+                actor->SetPosition(nueva, true);
             }
 
             // Rotacion: mirar hacia donde MIRA el jugador.
@@ -368,13 +358,17 @@ namespace F4MP
                 }
             }
 
-            // Log throttled (1/s) para depurar la orientacion.
+            // Log throttled (1/s): mide el DESFASE cuerpo vs objetivo (para diagnosticar
+            // la desincronizacion). Si 'desync' crece cuando el jugador se mueve, es que el
+            // cuerpo no llega/se va; si el cuerpo va en direccion girada, se vera aqui.
             static std::chrono::steady_clock::time_point lastLog{};
             if (std::chrono::duration<float>(ahora - lastLog).count() > 1.0f) {
                 lastLog = ahora;
-                REX::INFO("[F4MP] jugador {} speed={:.0f} moviendo={} agachado={} | grafo Speed_ok={} Dir_ok={}",
-                    pid, it->second.speed, it->second.isMoving, it->second.isSneaking,
-                    g_lastOkSpeed, g_lastOkDir);
+                const RE::NiPoint3 bp = actor->GetPosition();
+                const float desyncH = std::sqrt((objetivo.x - bp.x) * (objetivo.x - bp.x) +
+                                                 (objetivo.y - bp.y) * (objetivo.y - bp.y));
+                REX::INFO("[F4MP] jugador {} speed={:.0f} mov={} | cuerpo=({:.0f},{:.0f}) objetivo=({:.0f},{:.0f}) desfase={:.0f}",
+                    pid, it->second.speed, it->second.isMoving, bp.x, bp.y, objetivo.x, objetivo.y, desyncH);
             }
         }
 
@@ -384,7 +378,13 @@ namespace F4MP
                 RE::Actor* actor = FindNearbyActor(kDummyBase, ClaimedFormIds());
                 if (actor && remotos.find(g_spawnFor) != remotos.end()) {
                     g_bodies[g_spawnFor] = actor->GetFormID();
-                    REX::INFO("[F4MP] cuerpo asignado a jugador {} (actor {:#x})", g_spawnFor, actor->GetFormID());
+                    // CALMAR LA IA del cuerpo: es un NPC y, si no, deambula por su cuenta y
+                    // se va a otro sitio distinto del marcador. El "paquete de no hacer nada"
+                    // hace que deje de moverse solo, pero sigue animandose cuando lo movemos
+                    // nosotros con Actor::Move.
+                    actor->InitiateDoNothingPackage();
+                    actor->StopCombat();
+                    REX::INFO("[F4MP] cuerpo asignado a jugador {} (actor {:#x}), IA calmada", g_spawnFor, actor->GetFormID());
                 }
                 g_spawnPending = false;
             }
