@@ -376,6 +376,9 @@ void GameServer::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_t* 
                 m_clients.erase(it);
 
                 BroadcastMessage(MessageType::ChatMessage, &leaveMsg, sizeof(leaveMsg), playerId);
+                // Avisar a los demas para que borren su cuerpo AL INSTANTE.
+                PlayerLeftMsg leftPkt{ playerId };
+                BroadcastMessage(MessageType::Disconnect, &leftPkt, sizeof(leftPkt), playerId);
                 spdlog::info("[-] {} se ha ido  - jugadores {}/{}", leftName, GetPlayerCount(), m_maxPlayers);
             }
             m_sockets->CloseConnection(info->m_hConn, 0, nullptr, false);
@@ -476,6 +479,9 @@ void GameServer::CmdKick(uint32_t id) {
             std::string name = it->second.name;
             m_sockets->CloseConnection(it->first, 0, "Kicked by admin", false);
             m_clients.erase(it);
+            // Avisar a los demas para que borren su cuerpo AL INSTANTE.
+            PlayerLeftMsg leftPkt{ id };
+            BroadcastMessage(MessageType::Disconnect, &leftPkt, sizeof(leftPkt), id);
             spdlog::info("[admin] '{}' (ID {}) expulsado", name, id);
             return;
         }

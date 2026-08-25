@@ -306,15 +306,12 @@ namespace F4MP
                 actor->SetPosition(nueva, true);
             }
 
-            // Rotacion: mirar hacia donde MIRA el jugador.
-            // Solo re-posamos (UpdateActor3DPosition) cuando el heading CAMBIA, para
-            // no machacar la animacion cada frame (agacharse, andar, etc.).
+            // Rotacion: mirar hacia donde MIRA el jugador. Antes se llamaba a
+            // UpdateActor3DPosition al cambiar el heading, pero eso RE-POSA al actor y
+            // REINICIA la animacion (por eso se entrecortaba sin parar al moverse). Con
+            // SetHeading basta para orientarlo; el refresco visual llega con el SetPosition
+            // de cada frame, sin machacar la animacion.
             actor->SetHeading(it->second.angleZ);
-            auto itH = g_lastHeading.find(pid);
-            if (itH == g_lastHeading.end() || std::abs(it->second.angleZ - itH->second) > 0.03f) {
-                actor->UpdateActor3DPosition();
-                g_lastHeading[pid] = it->second.angleZ;
-            }
 
             // --- Animaciones: variables REALES del grafo (del volcado), por nivel ---
             const auto& rp = it->second;

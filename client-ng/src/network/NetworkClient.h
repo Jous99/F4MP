@@ -49,6 +49,12 @@ struct ConnectionAcceptedMsg {
     uint32_t maxPlayers;
 };
 
+// (tipo Disconnect) el servidor la envia cuando un jugador se va o es expulsado,
+// para eliminar su cuerpo AL INSTANTE sin esperar al timeout de 5 s.
+struct PlayerLeftMsg {
+    uint32_t playerId;
+};
+
 struct PlayerPositionMsg {
     uint32_t playerId;
     float x, y, z;

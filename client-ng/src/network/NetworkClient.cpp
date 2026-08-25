@@ -214,6 +214,18 @@ void NetworkClient::PumpMessages() {
                             ap->playerId, ap->sex, ap->raceFormID, ap->hairColor, ap->numHeadParts);
                     }
                 }
+            } else if (header->type == MessageType::Disconnect) {
+                // El servidor avisa de que un jugador se fue: lo eliminamos ya, para que
+                // su cuerpo se despawnee al instante (sin esperar al timeout de 5 s).
+                const size_t payloadSize = (size_t)msg->m_cbSize - sizeof(MessageHeader);
+                if (payloadSize >= sizeof(PlayerLeftMsg)) {
+                    const auto* left = reinterpret_cast<const PlayerLeftMsg*>(payload);
+                    std::lock_guard<std::mutex> lock(m_remoteMutex);
+                    m_remotePlayers.erase(left->playerId);
+                    m_remoteLastSeen.erase(left->playerId);
+                    m_remoteAppearance.erase(left->playerId);
+                    REX::INFO("[Network] Jugador {} se desconecto: cuerpo eliminado", left->playerId);
+                }
             }
         }
         msg->Release();
