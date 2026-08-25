@@ -6,37 +6,60 @@
 
 <a name="english"></a>
 
- Where the project is and where it's going. Legend: ✅ done · 🟡 in progress · ⬜ pending.
-Day-to-day status lives in [`CHECKLIST.md`](CHECKLIST.md); this file is the higher-level plan.
+Where the project is and where it's going. Legend: ✅ done · 🟡 in progress · ⬜ pending.
+Day-to-day status lives in [`CHECKLIST.md`](../CHECKLIST.md); this file is the higher-level plan.
+
+## Vision — two modes on one foundation
+
+- **Co-op** (small group, shared story): one host, sync most nearby NPCs + quests.
+- **MMO / free-roam** (NV:MP style — dedicated server, free roam, role-play): a **dedicated host** (a machine
+  running Fallout 4 + the mod as the permanent world), sync **players + key entities**, ambient NPCs stay local
+  per client (like GTA Online's traffic), area-of-interest by distance.
+
+Both share the same tech: **host-authoritative** (a client's game is the source of truth — the network server is
+only a relay with no game engine), NPC sync by FormID, and area-of-interest. We build the co-op foundation first.
 
 ## ✅ Done — the foundation
 
 - Client loads as an F4SE plugin (CommonLibF4), in-game menu.
 - Position sync: send your position, receive everyone else's.
 - A **body per remote player** that moves, **interpolates smoothly** and **faces where the player looks**.
-- The body is a **copy of your created character** (player base `0x7`).
-- Cleanup: bodies are removed on disconnect and after a 5 s timeout.
+- Cleanup: bodies removed on disconnect (server sends an explicit `Disconnect`) and after a 5 s timeout;
+  removal by API (`Disable` + `SetWantsDelete` + `MarkAsDeleted`).
 - Server: poll groups, admin console, master-server heartbeat, **configurable tick rate** (default 60).
 - Test simulator, web + master server (bilingual).
 
-## 🟡 Phase 1 — Animation sync  ← we are here
+## ✅ Phase 1 — Animation sync (playable)
 
-Make the body walk/run/sneak/jump instead of gliding. The body is teleported each tick, so it won't animate on its own — we drive its animation graph from the sender's movement state.
+The body walks/runs/sneaks/jumps instead of gliding. **Key trick:** `SetGraphVariableBool("bIsSynced", true)` each
+tick makes the animation graph honor the `Speed` we set (otherwise the engine resets it to 0). Movement stays as
+smooth `SetPosition`; animation is driven from the sender's movement state.
 
-- ⬜ Extend the protocol with movement state: `isMoving`, `isRunning` (already present), `isSneaking` (already present), `isJumping`/`inAir`, and ideally move direction (forward/back/strafe).
-- ⬜ Sender: read the local player's movement flags each tick and send them.
-- ⬜ Receiver: drive the body's animation graph with `NotifyAnimationGraph` events (`moveStart`/`moveStop`, `SprintStart`/`SprintStop`, `SneakStart`/`SneakStop`, jump events) based on the received state.
-- ⬜ Blend interpolation with animation so feet don't slide (match anim speed to movement speed).
-- ⬜ Test: two clients — one walks/runs/sneaks, the other sees the matching animation.
+- ✅ Protocol carries movement state (speed, moveDir, isMoving/running/sprinting/sneaking/jumping, weaponDrawn).
+- ✅ Walk / run / sprint (Speed + IsSprinting, smoothed + hysteresis so events don't flicker).
+- ✅ Sneak (SetSneaking + IsSneaking + SneakStart event).
+- ✅ Weapon drawn — combat stance (`GetWeaponMagicDrawn` → `DrawWeaponMagicHands`). *(Weapon MODEL = Phase 3.)*
+- ✅ Jump (`IsJumping` → jump event; Z already follows the arc via SetPosition).
+- 🟡 Polish: sneak-hold is asymmetric between the two test machines (likely a "hold vs toggle sneak" setting); revisit.
+
+## 🟡 Phase 1.5 — NPC sync (host-authoritative)  ← we are here
+
+The network server has **no game engine**, so NPCs must be authoritative on a **client (host)**. To avoid duplicates
+(both machines load the same world), the client does **not** spawn copies: it finds its **own** NPC by **FormID**,
+calms its AI, and drives it to the host's state. Reuses the whole player-body puppet system.
+
+- ✅ Protocol + relay: `NpcState` message (FormID, position, heading, …); server just forwards it.
+- ✅ Host toggle in the menu; host broadcasts nearby fixed-world NPCs (~10/s, FormID < 0xFF000000, capped).
+- ✅ Client drives its local NPCs by FormID (calm AI + interpolated position + heading).
+- ⬜ Animation for NPCs (reuse `bIsSynced` + Speed/events).
+- ⬜ Health + death sync (host authoritative; damage from non-host sent to host).
+- ⬜ Restore NPC AI when it leaves range / host stops. Dynamically-spawned NPCs. Area-of-interest per player.
+- ⬜ Server-side: only accept NPC messages from the host (anti-spoof).
 
 ## ⬜ Phase 2 — Per-player appearance
 
-Today every body uses *your* local character (base `0x7`), so on one machine everyone looks like you. For real multiplayer each player must send their own look.
-
-- ⬜ On connect, each client serializes its appearance (head parts, face morphs, tint layers, hair/skin color, body).
-- ⬜ Send it once (and on change) to the server; server stores + forwards to others.
-- ⬜ Receiver builds/customizes the spawned NPC with that appearance instead of the local player base.
-- ⬜ Handle male/female skeleton and race.
+Today every body uses *your* local character (base `0x7`). For real multiplayer each player must send their own look.
+(Appearance capture already exists — `PlayerAppearanceMsg`; pending: build the body from it instead of base 0x7.)
 
 ## ⬜ Phase 3 — Equipment & weapons
 
@@ -46,32 +69,32 @@ Today every body uses *your* local character (base `0x7`), so on one machine eve
 ## ⬜ Phase 4 — Combat & damage
 
 - ⬜ Sync attacks / weapon fire / reload.
-- ⬜ Damage model: who hit whom, health sync; server-side handlers.
+- ⬜ Damage model: who hit whom, health sync; **host-authoritative** for NPCs.
 - ⬜ Death / revive states.
 
 ## ⬜ Phase 5 — Polish & robustness
 
-- ⬜ Cell / worldspace awareness (only show players in the same area; hide across load doors).
-- ⬜ Name tags above bodies (name + distance), reusing the marker code.
+- ⬜ Cell / worldspace awareness (only show players/NPCs in the same area; hide across load doors).
+- ⬜ Name tags above bodies (name + distance).
 - ⬜ In-game chat UI.
 - ⬜ Smarter interpolation (fast-travel snap, extrapolation on packet loss, distance culling).
-- ⬜ Reconnection handling and error messages.
-- ⬜ Basic anti-cheat / sanity checks (server already owns the authoritative id).
+- ⬜ Reconnection handling and error messages. Basic anti-cheat.
 
-## ⬜ Phase 6 — Server & infrastructure
+## ⬜ Phase 6 — Server, infra & distribution
 
-- ✅ Cross-platform server (Windows + Linux; heartbeat via WinHTTP/libcurl) + Docker image.
-- ⬜ Working ban/kick list persisted across restarts.
-- ⬜ Shared protocol header (today the structs are duplicated between client, server and simulator).
-- ⬜ Automated tests.
-- ⬜ Master server: regions, version gating, richer server list.
+- ✅ Cross-platform server (Windows + Linux; heartbeat) + Docker image.
+- ✅ Manual release workflow (GitHub Actions, `workflow_dispatch`): builds client + server, publishes zips.
+- ⬜ Quest sync (host broadcasts stage changes → others `SetStage`).
+- ⬜ **Dedicated host** for the MMO mode (a permanent Fallout 4 instance as the world).
+- ⬜ Autoconnect (plugin reads config on launch, skips the menu) + standalone launcher (update DLL, pick server, launch).
+- ⬜ Working ban/kick list; shared protocol header; automated tests; richer master server (regions, version gating).
 
 ## Suggested order
 
-1. **Animations** (Phase 1) — biggest visual payoff next.
+1. **NPC sync** (Phase 1.5) — animation, then health/death.
 2. **Per-player appearance** (Phase 2) — needed for real multiplayer.
-3. **Equipment** (Phase 3) — makes players recognizable.
-4. **Combat** (Phase 4) — turns it into a game.
+3. **Equipment** (Phase 3) → **Combat** (Phase 4) — turns it into a game.
+4. **Quest sync** + **dedicated host** — enables real co-op / MMO sessions.
 5. Polish + infra (Phases 5–6) in parallel as needed.
 
 ---
@@ -83,36 +106,59 @@ Today every body uses *your* local character (base `0x7`), so on one machine eve
 *[English](#english) · [Español](#español)*
 
 Dónde está el proyecto y hacia dónde va. Leyenda: ✅ hecho · 🟡 en progreso · ⬜ pendiente.
-El estado del día a día está en [`CHECKLIST.md`](CHECKLIST.md); este archivo es el plan a más alto nivel.
+El estado del día a día está en [`CHECKLIST.md`](../CHECKLIST.md); este archivo es el plan a más alto nivel.
+
+## Visión — dos modos sobre una misma base
+
+- **Co-op** (grupo pequeño, historia compartida): un host, sincronizas casi todos los NPCs cercanos + misiones.
+- **MMO / mundo libre** (estilo NV:MP — servidor dedicado, free-roam, rol): un **host dedicado** (una máquina con
+  Fallout 4 + el mod como mundo permanente), sincronizas **jugadores + entidades clave**, y los NPCs de relleno son
+  locales de cada cliente (como el tráfico de GTA Online), con área de interés por distancia.
+
+Los dos comparten la misma tecnología: **host autoritativo** (el juego de un cliente es la verdad — el servidor de
+red es solo un cartero sin motor de juego), sync de NPCs por FormID, y área de interés. Primero montamos la base de co-op.
 
 ## ✅ Hecho — la base
 
 - El cliente carga como plugin de F4SE (CommonLibF4), con menú in-game.
 - Sync de posición: envías la tuya, recibes la de los demás.
 - Un **cuerpo por jugador remoto** que se mueve, **se interpola suave** y **mira hacia donde miras**.
-- El cuerpo es una **copia de tu personaje creado** (base del jugador `0x7`).
-- Limpieza: los cuerpos se eliminan al desconectar y tras un timeout de 5 s.
-- Servidor: poll groups, consola de administración, heartbeat al master server, **tick rate configurable** (60 por defecto).
+- Limpieza: los cuerpos se eliminan al desconectar (el servidor manda un `Disconnect` explícito) y tras 5 s;
+  borrado por API (`Disable` + `SetWantsDelete` + `MarkAsDeleted`).
+- Servidor: poll groups, consola de administración, heartbeat al master server, **tick rate configurable** (60).
 - Simulador de prueba, web + master server (bilingüe).
 
-## 🟡 Fase 1 — Sincronizar animaciones  ← estamos aquí
+## ✅ Fase 1 — Sincronizar animaciones (jugable)
 
-Que el cuerpo ande/corra/se agache/salte en vez de deslizarse. El cuerpo se teletransporta cada tick, así que no anima solo — hay que mover su grafo de animación según el estado de movimiento del jugador que lo controla.
+El cuerpo anda/corre/se agacha/salta en vez de deslizarse. **La clave:** `SetGraphVariableBool("bIsSynced", true)`
+cada tick hace que el grafo respete el `Speed` que le fijamos (si no, el motor lo pone a 0). El movimiento sigue
+siendo `SetPosition` suave; la animación se dirige según el estado de movimiento del emisor.
 
-- ⬜ Ampliar el protocolo con el estado de movimiento: `isMoving`, `isRunning` (ya está), `isSneaking` (ya está), `isJumping`/`enAire`, e idealmente la dirección (adelante/atrás/lateral).
-- ⬜ Emisor: leer los flags de movimiento del jugador local cada tick y enviarlos.
-- ⬜ Receptor: mover el grafo de animación del cuerpo con `NotifyAnimationGraph` (`moveStart`/`moveStop`, `SprintStart`/`SprintStop`, `SneakStart`/`SneakStop`, saltos) según el estado recibido.
-- ⬜ Combinar interpolación y animación para que los pies no patinen (ajustar la velocidad de anim a la del movimiento).
-- ⬜ Probar: dos clientes — uno anda/corre/se agacha, el otro ve la animación correcta.
+- ✅ El protocolo lleva el estado (speed, moveDir, isMoving/running/sprinting/sneaking/jumping, weaponDrawn).
+- ✅ Andar / correr / sprint (Speed + IsSprinting, suavizado + histéresis para que los eventos no parpadeen).
+- ✅ Agacharse (SetSneaking + IsSneaking + evento SneakStart).
+- ✅ Arma en mano — postura de combate (`GetWeaponMagicDrawn` → `DrawWeaponMagicHands`). *(El MODELO del arma = Fase 3.)*
+- ✅ Saltar (`IsJumping` → evento; la Z ya sigue el arco por SetPosition).
+- 🟡 Pulir: mantener el agachado es asimétrico entre las dos máquinas de prueba (posible ajuste "mantener vs alternar sigilo").
+
+## 🟡 Fase 1.5 — Sincronización de NPCs (host autoritativo)  ← estamos aquí
+
+El servidor de red **no tiene motor**, así que los NPCs deben ser autoritativos en un **cliente (host)**. Para evitar
+duplicados (las dos máquinas cargan el mismo mundo), el cliente **no** spawnea copias: busca **su propio** NPC por
+**FormID**, le calma la IA y lo conduce al estado del host. Reutiliza todo el sistema de muñecos de jugador.
+
+- ✅ Protocolo + reenvío: mensaje `NpcState` (FormID, posición, heading, …); el servidor solo lo reenvía.
+- ✅ Toggle de host en el menú; el host difunde los NPCs fijos cercanos (~10/s, FormID < 0xFF000000, con tope).
+- ✅ El cliente conduce sus NPCs locales por FormID (calmar IA + posición interpolada + heading).
+- ⬜ Animación de los NPCs (reusar `bIsSynced` + Speed/eventos).
+- ⬜ Sync de vida + muerte (host autoritativo; el daño del no-host se manda al host).
+- ⬜ Devolver la IA al NPC al salir de rango / si el host para. NPCs dinámicos. Área de interés por jugador.
+- ⬜ En el servidor: aceptar mensajes de NPC solo del host (anti-suplantación).
 
 ## ⬜ Fase 2 — Apariencia por jugador
 
-Ahora todos los cuerpos usan *tu* personaje local (base `0x7`), así que en una máquina todos tienen tu cara. Para multijugador de verdad, cada jugador debe enviar su propia apariencia.
-
-- ⬜ Al conectar, cada cliente serializa su apariencia (head parts, morphs de cara, capas de tinte, color de pelo/piel, cuerpo).
-- ⬜ Enviarla una vez (y al cambiar) al servidor; el servidor la guarda y la reparte.
-- ⬜ El receptor construye/personaliza el NPC spawneado con esa apariencia en vez de la base del jugador local.
-- ⬜ Gestionar esqueleto masculino/femenino y raza.
+Hoy todos los cuerpos usan *tu* personaje local (base `0x7`). Para multijugador de verdad, cada jugador debe enviar
+su propia apariencia. (La captura ya existe — `PlayerAppearanceMsg`; falta construir el cuerpo con ella en vez de base 0x7.)
 
 ## ⬜ Fase 3 — Equipo y armas
 
@@ -122,30 +168,28 @@ Ahora todos los cuerpos usan *tu* personaje local (base `0x7`), así que en una 
 ## ⬜ Fase 4 — Combate y daño
 
 - ⬜ Sincronizar ataques / disparos / recarga.
-- ⬜ Modelo de daño: quién golpea a quién, sync de vida; handlers en el servidor.
+- ⬜ Modelo de daño: quién golpea a quién, sync de vida; **host autoritativo** para NPCs.
 - ⬜ Estados de muerte / reaparición.
 
 ## ⬜ Fase 5 — Pulido y robustez
 
-- ⬜ Conciencia de celda / worldspace (mostrar solo a jugadores de la misma zona; ocultar tras puertas de carga).
-- ⬜ Etiquetas de nombre sobre los cuerpos (nombre + distancia), reusando el código de marcadores.
-- ⬜ Interfaz de chat in-game.
-- ⬜ Interpolación más lista (snap en fast travel, extrapolación ante pérdida de paquetes, culling por distancia).
-- ⬜ Gestión de reconexión y mensajes de error.
-- ⬜ Anti-cheat básico / comprobaciones de sanidad (el servidor ya controla el id autoritativo).
+- ⬜ Conciencia de celda / worldspace (mostrar solo a jugadores/NPCs de la misma zona; ocultar tras puertas de carga).
+- ⬜ Etiquetas de nombre sobre los cuerpos (nombre + distancia).
+- ⬜ Chat in-game. Interpolación más lista (snap en fast travel, extrapolación, culling). Reconexión. Anti-cheat básico.
 
-## ⬜ Fase 6 — Servidor e infraestructura
+## ⬜ Fase 6 — Servidor, infra y distribución
 
-- ✅ Servidor multiplataforma (Windows + Linux; heartbeat con WinHTTP/libcurl) + imagen Docker.
-- ⬜ Lista de baneos/kicks persistente entre reinicios.
-- ⬜ Header de protocolo compartido (hoy los structs están duplicados entre cliente, servidor y simulador).
-- ⬜ Tests automáticos.
-- ⬜ Master server: regiones, control de versión, lista de servidores más rica.
+- ✅ Servidor multiplataforma (Windows + Linux; heartbeat) + imagen Docker.
+- ✅ Workflow de release manual (GitHub Actions, `workflow_dispatch`): compila cliente + servidor, publica zips.
+- ⬜ Sync de misiones (el host difunde los cambios de etapa → los demás `SetStage`).
+- ⬜ **Host dedicado** para el modo MMO (una instancia permanente de Fallout 4 como mundo).
+- ⬜ Autoconnect (el plugin lee config al arrancar y salta el menú) + launcher (actualiza DLL, elige servidor, lanza).
+- ⬜ Lista de baneos/kicks; header de protocolo compartido; tests; master server más rico (regiones, versión).
 
 ## Orden sugerido
 
-1. **Animaciones** (Fase 1) — el mayor salto visual ahora.
+1. **Sync de NPCs** (Fase 1.5) — animación, luego vida/muerte.
 2. **Apariencia por jugador** (Fase 2) — necesaria para multijugador real.
-3. **Equipo** (Fase 3) — hace reconocibles a los jugadores.
-4. **Combate** (Fase 4) — lo convierte en un juego.
+3. **Equipo** (Fase 3) → **Combate** (Fase 4) — lo convierte en un juego.
+4. **Sync de misiones** + **host dedicado** — habilita co-op / sesiones MMO de verdad.
 5. Pulido + infra (Fases 5–6) en paralelo según haga falta.
