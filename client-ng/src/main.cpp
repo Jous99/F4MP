@@ -216,6 +216,20 @@ namespace F4MP
         return s;
     }
 
+    // Borra un cuerpo por API (mas fiable que comandos de consola). Disable lo oculta
+    // al instante; SetWantsDelete + MarkAsDeleted hacen que el juego lo elimine y NO lo
+    // guarde en la partida (los actores de placeatme son persistentes; asi evitamos que
+    // se acumulen "muñecos fantasma" en el save).
+    static void DespawnBody(uint32_t fid)
+    {
+        auto* form = RE::TESForm::GetFormByID(fid);
+        auto* ref = form ? form->As<RE::TESObjectREFR>() : nullptr;
+        if (!ref) return;
+        ref->Disable();
+        ref->SetWantsDelete(true);
+        ref->MarkAsDeleted();
+    }
+
     // Se ejecuta en el hilo PRINCIPAL: crea/mueve un cuerpo por cada jugador remoto.
     static void BodiesSync()
     {
@@ -223,11 +237,7 @@ namespace F4MP
         if (!net.IsConnected()) {
             // Desconectado: despawnear cualquier cuerpo que haya quedado.
             for (auto& [pid, fid] : g_bodies) {
-                char cmd[64];
-                std::snprintf(cmd, sizeof(cmd), "prid %x", fid);
-                RE::Console::ExecuteCommand(cmd);
-                RE::Console::ExecuteCommand("disable");
-                RE::Console::ExecuteCommand("markfordelete");
+                DespawnBody(fid);
             }
             if (!g_bodies.empty()) {
                 REX::INFO("[F4MP] desconectado: {} cuerpo(s) despawneado(s)", g_bodies.size());
@@ -255,11 +265,7 @@ namespace F4MP
         }
         for (uint32_t pid : muertos) {
             uint32_t fid = g_bodies[pid];
-            char cmd[64];
-            std::snprintf(cmd, sizeof(cmd), "prid %x", fid);
-            RE::Console::ExecuteCommand(cmd);   // seleccionar la referencia
-            RE::Console::ExecuteCommand("disable");
-            RE::Console::ExecuteCommand("markfordelete");
+            DespawnBody(fid);   // borrado fiable por API (Disable + MarkAsDeleted)
             g_bodies.erase(pid);
             g_lastHeading.erase(pid);
             g_animState.erase(pid);
