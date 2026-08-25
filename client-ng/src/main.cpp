@@ -249,14 +249,8 @@ namespace F4MP
         }
         auto remotos = net.GetRemotePlayers();
 
-        // dt real entre ticks (para que la suavidad no dependa de los FPS).
-        static std::chrono::steady_clock::time_point lastTick = std::chrono::steady_clock::now();
-        auto ahora = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(ahora - lastTick).count();
-        lastTick = ahora;
-        if (dt <= 0.0f || dt > 0.5f) dt = 0.033f;  // clamp por si hubo pausa/carga
+        auto ahora = std::chrono::steady_clock::now();  // para el throttle del log
 
-        // (dt se usa abajo para mover el cuerpo a la velocidad correcta con Actor::Move.)
 
         // 0. Limpiar cuerpos de jugadores que ya no estan conectados.
         std::vector<uint32_t> muertos;
@@ -292,95 +286,86 @@ namespace F4MP
             const RE::NiPoint3 objetivo{ it->second.x, it->second.y, it->second.z };
             const RE::NiPoint3 actual = actor->GetPosition();
             const RE::NiPoint3 delta = objetivo - actual;
-            const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+            const float dist  = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+            const float distH = std::sqrt(delta.x * delta.x + delta.y * delta.y);
 
-            if (dist > 1500.0f) {
-                // Teletransporte: al aparecer (spawn) o en viaje rapido (cuerpo lejisimos).
-                actor->SetPosition(objetivo, true);
-            } else {
-                // Seguimiento EXACTO por posicion: el cuerpo queda sincronizado con el marcador
-                // (la posicion real de red). Nos acercamos suave al objetivo cada tick.
-                // OJO: descartamos Actor::Move porque mueve al cuerpo en SU direccion de vista
-                // (siempre hacia delante), no en la del mundo -> se iba a otro lado.
-                // NOTA: esto por si solo NO anima las piernas (el motor no ve al cuerpo
-                // "moverse"); la animacion se resolvera aparte (inyectando velocidad al
-                // controlador fisico) sin cambiar esta posicion exacta.
-                const float alpha = 1.0f - std::exp(-dt / 0.12f);  // suavizado ~0.12 s
-                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
-                                    actual.y + delta.y * alpha,
-                                    actual.z + delta.z * alpha };
-                actor->SetPosition(nueva, true);
-            }
-
-            // Rotacion: mirar hacia donde MIRA el jugador. Antes se llamaba a
-            // UpdateActor3DPosition al cambiar el heading, pero eso RE-POSA al actor y
-            // REINICIA la animacion (por eso se entrecortaba sin parar al moverse). Con
-            // SetHeading basta para orientarlo; el refresco visual llega con el SetPosition
-            // de cada frame, sin machacar la animacion.
-            actor->SetHeading(it->second.angleZ);
-
-            // --- Animaciones ---
             const auto& rp = it->second;
             BodyAnimState& st = g_animState[pid];
 
-            // 1) SUAVIZAR la velocidad. La que llega esta calculada frame a frame en el
-            //    emisor y salta muchisimo: cruzaba los umbrales de andar/sprint arriba y
-            //    abajo constantemente, disparando eventos sin parar -> la animacion se
-            //    reiniciaba todo el rato. Filtro paso-bajo para estabilizarla.
-            float rawSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
+            // Velocidad suavizada (la que llega salta mucho frame a frame en el emisor).
+            const float rawSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
             st.smoothSpeed = st.smoothSpeed * 0.85f + rawSpeed * 0.15f;
 
+            // Controlador fisico del cuerpo (para moverlo por velocidad REAL).
+            RE::bhkCharacterController* cc = nullptr;
+            if (actor->currentProcess && actor->currentProcess->middleHigh)
+                cc = actor->currentProcess->middleHigh->charController.get();
+
+            constexpr float HAVOK = 0.0142875f;  // unidades de juego -> havok (metros)
+
+            // ---- MOVIMIENTO: mover el cuerpo DE VERDAD por el motor ----
+            if (dist > 1500.0f || !cc) {
+                // Teletransporte (spawn / viaje rapido) o si aun no hay controlador.
+                actor->SetPosition(objetivo, true);
+            } else {
+                // Le damos VELOCIDAD DE MUNDO al controlador fisico hacia el objetivo: el
+                // motor mueve el cuerpo y el grafo lo anima solo. Ya NO fijamos la posicion
+                // cada frame (eso peleaba con la velocidad y, yendo de frente, se anulaban
+                // -> el grafo veia velocidad 0 y se congelaba; de espaldas no se anulaba y
+                // por eso SI animaba). Solo corregimos si se desvia mucho.
+                RE::hkVector4f cur; cc->GetLinearVelocityImpl(cur);
+                RE::hkVector4f vel{ 0.0f, 0.0f, cur.z, 0.0f };  // Z: la lleva la gravedad del motor
+                if (distH > 2.0f) {
+                    // Velocidad: la del jugador, y al menos la necesaria para cerrar el hueco
+                    // (para no quedarse atras), con un limite.
+                    float v = std::max<float>(st.smoothSpeed, distH / 0.15f);
+                    v = std::min<float>(v, 800.0f) * HAVOK;
+                    vel.x = (delta.x / distH) * v;
+                    vel.y = (delta.y / distH) * v;
+                }
+                cc->SetLinearVelocityImpl(vel);
+
+                // Correccion de deriva si se aleja mucho (hipo de red / choque).
+                if (distH > 300.0f) {
+                    actor->SetPosition(objetivo, true);
+                }
+                // Correccion de altura (escaleras / caidas): recolocar solo la Z.
+                else if (std::fabs(delta.z) > 150.0f) {
+                    const RE::NiPoint3 p = actor->GetPosition();
+                    actor->SetPosition(RE::NiPoint3{ p.x, p.y, objetivo.z }, true);
+                }
+            }
+
+            // Rotacion: mirar hacia donde MIRA el jugador (SetHeading no reinicia la anim).
+            actor->SetHeading(it->second.angleZ);
+
+            // ---- ANIMACION: variables + eventos del grafo (afinan; el movimiento real de
+            //      arriba es lo que ahora SOSTIENE la animacion) ----
             g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", st.smoothSpeed);
             g_lastOkDir   = actor->SetGraphVariableFloat("Direction", rp.moveDir);
 
-            // 2) Estado con HISTERESIS: umbral distinto para ARRANCAR y para PARAR, para que
-            //    no vibre en el limite. Se calcula sobre la velocidad ya suavizada.
-            const bool wantMoving   = st.moving   ? (st.smoothSpeed >  8.0f) : (st.smoothSpeed >  30.0f);
-            const bool wantSprint   = st.sprinting? (st.smoothSpeed > 250.0f): (st.smoothSpeed > 340.0f);
+            // Estado con HISTERESIS (umbral distinto para arrancar y parar, sin vibrar).
+            const bool wantMoving = st.moving   ? (st.smoothSpeed >   8.0f) : (st.smoothSpeed >  30.0f);
+            const bool wantSprint = st.sprinting? (st.smoothSpeed > 250.0f) : (st.smoothSpeed > 340.0f);
 
             actor->SetGraphVariableBool("IsSprinting", wantSprint);
-            // Agachado: fijar el ESTADO real del actor (no solo la variable del grafo).
             if (actor->IsSneaking() != rp.isSneaking) {
                 actor->SetSneaking(rp.isSneaking);
                 actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             }
 
-            // 3) EVENTOS del grafo: SOLO cuando el estado (ya estable) cambia de verdad.
             if (!st.init) {
                 st.moving = wantMoving;
                 st.sprinting = wantSprint;
                 st.init = true;
             } else {
                 if (wantMoving != st.moving) {
-                    const char* ev = wantMoving ? "moveStart" : "moveStop";
-                    actor->NotifyAnimationGraphImpl(ev);
-                    REX::INFO("[F4MP] anim jugador {}: evento '{}' (speed suavizada {:.0f})", pid, ev, st.smoothSpeed);
+                    actor->NotifyAnimationGraphImpl(wantMoving ? "moveStart" : "moveStop");
                     st.moving = wantMoving;
                 }
                 if (wantSprint != st.sprinting) {
-                    const char* ev = wantSprint ? "SprintStart" : "SprintStop";
-                    actor->NotifyAnimationGraphImpl(ev);
-                    REX::INFO("[F4MP] anim jugador {}: evento '{}' (speed suavizada {:.0f})", pid, ev, st.smoothSpeed);
+                    actor->NotifyAnimationGraphImpl(wantSprint ? "SprintStart" : "SprintStop");
                     st.sprinting = wantSprint;
-                }
-            }
-
-            // 4) INYECTAR VELOCIDAD al controlador fisico para que el grafo SOSTENGA la
-            //    animacion. El grafo lee la velocidad del controlador para saber si anda/
-            //    corre; como el cuerpo se coloca con SetPosition (no se mueve solo), sin
-            //    esto la animacion arranca y se congela tras el primer paso. La velocidad
-            //    va en espacio de MUNDO (por eso ya no ira "siempre hacia delante" como con
-            //    Actor::Move) y en unidades de HAVOK (metros): convertimos desde unidades
-            //    de juego. Se inyecta DESPUES del SetPosition para que no la pise.
-            if (auto* proc = actor->currentProcess) {
-                if (auto* mid = proc->middleHigh) {
-                    if (auto* cc = mid->charController.get()) {
-                        constexpr float HAVOK = 0.0142875f;              // juego -> havok
-                        const float worldDir = rp.angleZ + rp.moveDir;   // direccion real en el mundo
-                        const float vh = st.smoothSpeed * HAVOK;
-                        RE::hkVector4f vel{ std::sin(worldDir) * vh, std::cos(worldDir) * vh, 0.0f, 0.0f };
-                        cc->SetLinearVelocityImpl(vel);
-                    }
                 }
             }
 
