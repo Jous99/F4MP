@@ -398,8 +398,9 @@ namespace F4MP
                 actor->GetGraphVariableImplFloat("Direction", gDir);
                 const bool hasCC = actor->currentProcess && actor->currentProcess->middleHigh &&
                                    actor->currentProcess->middleHigh->charController.get();
-                REX::INFO("[F4MP] jug {} | recibida={:.0f} suave={:.0f} | GRAFO Speed={:.1f} Dir={:.2f} | cc={} sprint={}",
-                    pid, it->second.speed, st.smoothSpeed, gSpeed, gDir, hasCC, wantSprint);
+                bool gSneak = false; actor->GetGraphVariableImplBool("IsSneaking", gSneak);
+                REX::INFO("[F4MP] jug {} | recibida={:.0f} | Speed={:.1f} | snkRx={} snkBody={} snkGrafo={} | salto={}",
+                    pid, it->second.speed, gSpeed, rp.isSneaking, actor->IsSneaking(), gSneak, rp.isJumping);
             }
         }
 
