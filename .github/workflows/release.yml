@@ -1,0 +1,87 @@
+# Publica un RELEASE con el cliente (client-ng) y el servidor ya compilados.
+# SOLO se ejecuta a mano: pestana Actions -> "Release" -> "Run workflow".
+# NO se dispara con push ni con tags (por eso solo lleva workflow_dispatch).
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version del release (etiqueta, ej. v0.2.0)'
+        required: true
+        default: 'v0.1.0'
+      prerelease:
+        description: 'Marcar como pre-release (beta)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # necesario para crear el release y la etiqueta
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (con submodulos)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Preparar MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Instalar xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      # ---- Cliente activo: client-ng (F4SE + CommonLibF4, xmake) ----
+      - name: Compilar cliente (xmake)
+        shell: cmd
+        run: |
+          cd client-ng
+          xmake f -y -m releasedbg
+          xmake -y
+
+      # ---- Servidor: cmake + Ninja (deps vendidas en third_party) ----
+      - name: Configurar servidor
+        run: cmake -S server -B server/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Compilar servidor
+        run: cmake --build server/build
+
+      # ---- Empaquetar: un zip para el cliente y otro para el servidor ----
+      - name: Reunir y empaquetar binarios
+        shell: pwsh
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release/client, release/server, out | Out-Null
+
+          # Cliente F4SE (va en Data\F4SE\Plugins del juego)
+          $dll = Get-ChildItem -Path client-ng/build -Recurse -Filter F4MPClient.dll | Select-Object -First 1
+          if (-not $dll) { throw "No se encontro F4MPClient.dll (fallo la compilacion del cliente)" }
+          Copy-Item $dll.FullName release/client/
+
+          # Servidor + sus DLLs
+          Copy-Item server/build/F4MPServer.exe release/server/
+          Copy-Item third_party/win-x64/bin/*.dll release/server/ -ErrorAction SilentlyContinue
+
+          # Comprimir cada parte
+          Compress-Archive -Path release/client/* -DestinationPath "out/F4MP-Client-$env:VERSION.zip" -Force
+          Compress-Archive -Path release/server/* -DestinationPath "out/F4MP-Server-$env:VERSION.zip" -Force
+
+          Get-ChildItem out
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: F4MP ${{ github.event.inputs.version }}
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: true
+          files: out/*.zip
