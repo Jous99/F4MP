@@ -68,6 +68,7 @@ struct PlayerPositionMsg {
     bool isSprinting;
     bool isSneaking;
     bool isJumping;
+    bool weaponDrawn;   // arma/magia en mano (postura de combate)
 };
 
 // Apariencia del jugador (Fase 2A): se envia una vez al conectar y se reparte.

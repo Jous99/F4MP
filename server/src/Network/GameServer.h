@@ -67,6 +67,7 @@ struct PlayerPositionMsg {
     bool isSprinting;
     bool isSneaking;
     bool isJumping;
+    bool weaponDrawn;   // arma/magia en mano (debe coincidir con la del cliente)
 };
 
 struct PlayerAppearanceMsg {

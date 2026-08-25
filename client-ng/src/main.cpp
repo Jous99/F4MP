@@ -115,7 +115,8 @@ namespace F4MP
                         msg.isSprinting = speed > 300.0f;   // umbral aprox. de sprint
                         msg.isRunning = speed > 150.0f && !msg.isSprinting;
                         msg.isSneaking = player->IsSneaking();
-                        msg.isJumping = false;              // TODO: detectar salto/aire
+                        msg.isJumping = player->IsJumping();              // en el aire / saltando
+                        msg.weaponDrawn = player->GetWeaponMagicDrawn();  // arma en mano?
                         msg.cellId = 0;
                         lastSend = now;
                         net.SendPacket(Network::MessageType::PlayerPosition, &msg, sizeof(msg));
@@ -174,7 +175,8 @@ namespace F4MP
     // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
     // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
     struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false;
-                           float smoothSpeed = 0.0f; float aimX = 0.0f; float aimY = 0.0f; };
+                           bool weaponDrawn = false; bool jumping = false; float smoothSpeed = 0.0f;
+                           float aimX = 0.0f; float aimY = 0.0f; };
     static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
@@ -332,6 +334,12 @@ namespace F4MP
                 actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             }
 
+            // Arma en mano: al cambiar, desenfundar/enfundar (cambia la postura del cuerpo).
+            if (st.weaponDrawn != rp.weaponDrawn) {
+                actor->DrawWeaponMagicHands(rp.weaponDrawn);
+                st.weaponDrawn = rp.weaponDrawn;
+            }
+
             if (!st.init) {
                 st.moving = wantMoving;
                 st.sprinting = wantSprint;
@@ -345,6 +353,13 @@ namespace F4MP
                     actor->NotifyAnimationGraphImpl(wantSprint ? "SprintStart" : "SprintStop");
                     st.sprinting = wantSprint;
                 }
+            }
+
+            // Salto: al DESPEGAR (paso de suelo a aire) disparamos el evento de salto en el
+            // cuerpo. La altura ya la sigue el SetPosition (el cuerpo sube/baja con el jugador).
+            if (st.jumping != rp.isJumping) {
+                if (rp.isJumping) actor->NotifyAnimationGraphImpl("JumpUp");
+                st.jumping = rp.isJumping;
             }
 
             // Log throttled (1/s): mide el DESFASE cuerpo vs objetivo (para diagnosticar
