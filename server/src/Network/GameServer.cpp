@@ -232,6 +232,14 @@ void GameServer::HandleChatMessage(HSteamNetConnection conn, const ChatMessageMs
     }
 }
 
+void GameServer::HandleNpcState(HSteamNetConnection conn, const NpcStateMsg* msg) {
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    auto it = m_clients.find(conn);
+    if (it == m_clients.end()) return;
+    // Reenviar tal cual al resto (lo manda el host). El servidor no interpreta el NPC.
+    BroadcastMessage(MessageType::NpcState, msg, sizeof(NpcStateMsg), it->second.id);
+}
+
 void GameServer::HandlePlayerAppearance(HSteamNetConnection conn, const PlayerAppearanceMsg* msg) {
     std::lock_guard<std::mutex> lock(m_clientsMutex);
     auto it = m_clients.find(conn);
@@ -326,6 +334,9 @@ void GameServer::ProcessMessages() {
                     break;
                 case MessageType::PlayerPosition:
                     HandlePlayerPosition(msg->m_conn, reinterpret_cast<const PlayerPositionMsg*>(payload));
+                    break;
+                case MessageType::NpcState:
+                    HandleNpcState(msg->m_conn, reinterpret_cast<const NpcStateMsg*>(payload));
                     break;
                 case MessageType::PlayerAppearance:
                     HandlePlayerAppearance(msg->m_conn, reinterpret_cast<const PlayerAppearanceMsg*>(payload));

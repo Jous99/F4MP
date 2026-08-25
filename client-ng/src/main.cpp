@@ -22,7 +22,13 @@ namespace F4MP
     static char g_playerName[64] = "Wastelander";
     static std::atomic<bool> g_netThreadStarted{ false };
 
-    static void BodiesSync();  // declaracion adelantada (se define mas abajo)
+    // Si soy HOST, difundo el estado de los NPCs cercanos. Si no, los recibo y conduzco
+    // los NPCs locales (por FormID) al estado que manda el host. (Toggle desde el menu.)
+    static bool g_isHost = false;
+
+    static void BodiesSync();       // declaracion adelantada (se define mas abajo)
+    static void BroadcastNpcs();    // host: difundir NPCs cercanos
+    static void NpcsSync();         // cliente: conducir NPCs locales por FormID
 
     // Captura la apariencia del jugador local (Fase 2A) para enviarla al servidor.
     static Network::PlayerAppearanceMsg CaptureAppearance(uint32_t myId)
@@ -128,6 +134,22 @@ namespace F4MP
                 if (duration_cast<milliseconds>(now - lastSync).count() >= 16) {
                     lastSync = now;
                     F4SE::GetTaskInterface()->AddTask([]() { BodiesSync(); });
+                }
+
+                // NPCs (host autoritativo): si soy host, difundo los NPCs cercanos ~10/s;
+                // si no, conduzco mis NPCs locales al estado recibido ~30/s.
+                static auto lastNpcSend = now;
+                static auto lastNpcSync = now;
+                if (g_isHost) {
+                    if (duration_cast<milliseconds>(now - lastNpcSend).count() >= 100) {
+                        lastNpcSend = now;
+                        F4SE::GetTaskInterface()->AddTask([]() { BroadcastNpcs(); });
+                    }
+                } else {
+                    if (duration_cast<milliseconds>(now - lastNpcSync).count() >= 33) {
+                        lastNpcSync = now;
+                        F4SE::GetTaskInterface()->AddTask([]() { NpcsSync(); });
+                    }
                 }
             } else {
                 s_sentAppearance = false;  // al reconectar, reenviar la apariencia
@@ -436,6 +458,95 @@ namespace F4MP
         }
     }
 
+    // ================= NPCs (host autoritativo) =================
+    // FormIDs de NPCs que este cliente ha "tomado" (les apagamos la IA para conducirlos).
+    static std::unordered_set<uint32_t> g_drivenNpcs;
+
+    // HOST: difunde el estado de los NPCs "fijos" cercanos, identificados por FormID.
+    static void BroadcastNpcs()
+    {
+        auto& net = Network::NetworkClient::GetInstance();
+        if (!net.IsConnected() || !g_isHost) return;
+        auto* pl = RE::PlayerCharacter::GetSingleton();
+        if (!pl) return;
+        auto* cell = pl->GetParentCell();
+        if (!cell) return;
+        const RE::NiPoint3 myPos = pl->GetPosition();
+        const auto claimed = ClaimedFormIds();   // cuerpos de jugador: NO son NPCs
+
+        int count = 0;
+        cell->ForEachReferenceInRange(myPos, 4000.0f, [&](RE::TESObjectREFR* ref) {
+            if (count >= 30) return RE::BSContainer::ForEachResult::kStop;   // limite de NPCs
+            if (!ref || ref == static_cast<RE::TESObjectREFR*>(pl))
+                return RE::BSContainer::ForEachResult::kContinue;
+            const uint32_t fid = ref->GetFormID();
+            if (fid >= 0xFF000000)                     // dinamico: el FormID no coincide entre maquinas
+                return RE::BSContainer::ForEachResult::kContinue;
+            if (claimed.find(fid) != claimed.end())    // es un cuerpo de otro jugador, no un NPC
+                return RE::BSContainer::ForEachResult::kContinue;
+            auto* actor = ref->As<RE::Actor>();
+            if (!actor)                                // solo actores (NPCs/criaturas)
+                return RE::BSContainer::ForEachResult::kContinue;
+
+            Network::NpcStateMsg msg{};
+            msg.formId = fid;
+            const auto p = actor->GetPosition();
+            msg.x = p.x; msg.y = p.y; msg.z = p.z;
+            msg.angleZ = actor->GetHeading();
+            msg.speed = 0.0f;                          // animacion: mas adelante
+            msg.isMoving = false;
+            msg.isSneaking = actor->IsSneaking();
+            msg.isDead = false;                        // muerte: mas adelante
+            net.SendPacket(Network::MessageType::NpcState, &msg, sizeof(msg));
+            count++;
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
+
+    // CLIENTE: conduce los NPCs locales (buscados por FormID) al estado que manda el host.
+    static void NpcsSync()
+    {
+        auto& net = Network::NetworkClient::GetInstance();
+        if (!net.IsConnected() || g_isHost) { g_drivenNpcs.clear(); return; }
+
+        auto npcs = net.GetRemoteNpcs();
+
+        // Soltar los NPCs que el host ya no difunde (se alejaron): dejan de estar tomados.
+        for (auto it = g_drivenNpcs.begin(); it != g_drivenNpcs.end();) {
+            if (npcs.find(*it) == npcs.end()) it = g_drivenNpcs.erase(it);
+            else ++it;
+        }
+
+        for (auto& [fid, s] : npcs) {
+            auto* form = RE::TESForm::GetFormByID(fid);
+            auto* actor = form ? form->As<RE::Actor>() : nullptr;
+            if (!actor) continue;                      // este cliente no tiene ese NPC cargado
+
+            // Primera vez que tomamos este NPC: calmar su IA para que no haga lo suyo.
+            if (g_drivenNpcs.find(fid) == g_drivenNpcs.end()) {
+                actor->InitiateDoNothingPackage();
+                actor->StopCombat();
+                g_drivenNpcs.insert(fid);
+                REX::INFO("[F4MP] NPC {:#x} tomado (conducido por el host)", fid);
+            }
+
+            // Conducir posicion (interpolada suave) + heading, como los cuerpos de jugador.
+            const RE::NiPoint3 objetivo{ s.x, s.y, s.z };
+            const RE::NiPoint3 actual = actor->GetPosition();
+            const RE::NiPoint3 delta = objetivo - actual;
+            const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+            if (dist > 1500.0f) {
+                actor->SetPosition(objetivo, true);
+            } else {
+                const float alpha = 0.35f;
+                actor->SetPosition(RE::NiPoint3{ actual.x + delta.x * alpha,
+                                                 actual.y + delta.y * alpha,
+                                                 actual.z + delta.z * alpha }, true);
+            }
+            actor->SetHeading(s.angleZ);
+        }
+    }
+
     static void SpawnDummy()
     {
         // 1. Spawnear via consola (funciona de forma fiable).
@@ -486,6 +597,16 @@ namespace F4MP
             ImGuiMCP::Text("Jugadores remotos: %d", (int)remotos.size());
             for (const auto& [id, p] : remotos) {
                 ImGuiMCP::Text("  #%u  x=%.0f y=%.0f z=%.0f", id, p.x, p.y, p.z);
+            }
+
+            // Rol host/cliente para la sincronizacion de NPCs.
+            ImGuiMCP::Separator();
+            ImGuiMCP::Text("Rol NPCs: %s", g_isHost ? "HOST (difundo NPCs)" : "cliente (recibo NPCs)");
+            if (ImGuiMCP::Button(g_isHost ? "Dejar de ser host" : "Ser host de NPCs")) {
+                g_isHost = !g_isHost;
+            }
+            if (!g_isHost) {
+                ImGuiMCP::Text("NPCs conducidos: %d", (int)net.GetRemoteNpcs().size());
             }
         } else {
             ImGuiMCP::Text("Estado: desconectado");

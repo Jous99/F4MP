@@ -92,6 +92,8 @@ void NetworkClient::Disconnect() {
         m_remotePlayers.clear();   // olvidar a los remotos: si no, quedan fantasmas
         m_remoteLastSeen.clear();
         m_remoteAppearance.clear();
+        m_remoteNpcs.clear();
+        m_npcLastSeen.clear();
     }
     REX::INFO("[Network] Desconectado");
 }
@@ -148,6 +150,8 @@ void NetworkClient::OnConnStatusChanged(SteamNetConnectionStatusChangedCallback_
                 m_remotePlayers.clear();   // olvidar a los remotos al cerrarse la conexion
                 m_remoteLastSeen.clear();
                 m_remoteAppearance.clear();
+        m_remoteNpcs.clear();
+        m_npcLastSeen.clear();
             }
             break;
 
@@ -226,6 +230,15 @@ void NetworkClient::PumpMessages() {
                     m_remoteAppearance.erase(left->playerId);
                     REX::INFO("[Network] Jugador {} se desconecto: cuerpo eliminado", left->playerId);
                 }
+            } else if (header->type == MessageType::NpcState) {
+                // El host difunde el estado de un NPC: lo guardamos por FormID.
+                const size_t payloadSize = (size_t)msg->m_cbSize - sizeof(MessageHeader);
+                if (payloadSize >= sizeof(NpcStateMsg)) {
+                    const auto* npc = reinterpret_cast<const NpcStateMsg*>(payload);
+                    std::lock_guard<std::mutex> lock(m_remoteMutex);
+                    m_remoteNpcs[npc->formId] = *npc;
+                    m_npcLastSeen[npc->formId] = std::chrono::steady_clock::now();
+                }
             }
         }
         msg->Release();
@@ -255,6 +268,23 @@ std::unordered_map<uint32_t, PlayerPositionMsg> NetworkClient::GetRemotePlayers(
         }
     }
     return m_remotePlayers;
+}
+
+std::unordered_map<uint32_t, NpcStateMsg> NetworkClient::GetRemoteNpcs() {
+    std::lock_guard<std::mutex> lock(m_remoteMutex);
+    // Olvidar NPCs que el host lleva >3 s sin difundir (se alejaron o murio el host).
+    const auto ahora = std::chrono::steady_clock::now();
+    for (auto it = m_remoteNpcs.begin(); it != m_remoteNpcs.end();) {
+        auto seen = m_npcLastSeen.find(it->first);
+        if (seen != m_npcLastSeen.end() &&
+            std::chrono::duration<float>(ahora - seen->second).count() > 3.0f) {
+            m_npcLastSeen.erase(seen);
+            it = m_remoteNpcs.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return m_remoteNpcs;
 }
 
 }

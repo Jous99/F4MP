@@ -27,6 +27,7 @@ enum class MessageType : uint16_t {
     DamageDealt = 30,
     EntitySpawn = 40,
     EntityState = 41,
+    NpcState = 50,      // el host difunde el estado de un NPC; el servidor lo reenvia
 };
 
 #pragma pack(push, 1)
@@ -85,6 +86,18 @@ struct ChatMessageMsg {
     uint32_t senderId;
     char message[256];
     uint8_t channel;
+};
+
+// Estado de un NPC difundido por el host (debe coincidir con la del cliente). El
+// servidor solo la REENVIA a los demas; no interpreta su contenido.
+struct NpcStateMsg {
+    uint32_t formId;
+    float x, y, z;
+    float angleZ;
+    float speed;
+    bool isMoving;
+    bool isSneaking;
+    bool isDead;
 };
 
 struct DamageDealtMsg {
@@ -151,6 +164,7 @@ private:
 
     void HandleConnectionRequest(HSteamNetConnection conn, const ConnectionRequestMsg* msg);
     void HandlePlayerPosition(HSteamNetConnection conn, const PlayerPositionMsg* msg);
+    void HandleNpcState(HSteamNetConnection conn, const NpcStateMsg* msg);
     void HandlePlayerAppearance(HSteamNetConnection conn, const PlayerAppearanceMsg* msg);
     void HandleChatMessage(HSteamNetConnection conn, const ChatMessageMsg* msg);
 

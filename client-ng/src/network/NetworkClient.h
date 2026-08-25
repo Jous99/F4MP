@@ -28,6 +28,7 @@ enum class MessageType : uint16_t {
     DamageDealt = 30,
     EntitySpawn = 40,
     EntityState = 41,
+    NpcState = 50,      // el host difunde el estado de un NPC (por FormID)
 };
 
 #pragma pack(push, 1)
@@ -89,6 +90,19 @@ struct ChatMessageMsg {
     uint8_t channel;
 };
 
+// Estado de un NPC que difunde el HOST. El FormID identifica al mismo NPC en las dos
+// maquinas (para NPCs "fijos" del mundo, el FormID coincide). El cliente busca su NPC
+// local por ese FormID y lo conduce a este estado.
+struct NpcStateMsg {
+    uint32_t formId;     // FormID del NPC (identidad comun entre maquinas)
+    float x, y, z;
+    float angleZ;        // heading
+    float speed;         // para animacion (mas adelante)
+    bool isMoving;
+    bool isSneaking;
+    bool isDead;         // para muerte (mas adelante)
+};
+
 #pragma pack(pop)
 
 constexpr uint32_t PROTOCOL_VERSION = 1;
@@ -121,6 +135,9 @@ public:
     // Apariencia recibida de un jugador remoto. Devuelve false si aun no llego.
     bool GetAppearance(uint32_t playerId, PlayerAppearanceMsg& out);
 
+    // Copia de los NPCs difundidos por el host (formId -> ultimo estado).
+    std::unordered_map<uint32_t, NpcStateMsg> GetRemoteNpcs();
+
 private:
     NetworkClient() = default;
 
@@ -145,6 +162,10 @@ private:
     std::unordered_map<uint32_t, PlayerPositionMsg> m_remotePlayers;
     std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> m_remoteLastSeen;
     std::unordered_map<uint32_t, PlayerAppearanceMsg> m_remoteAppearance;
+
+    // NPCs difundidos por el host (formId -> estado) + cuando se vio cada uno.
+    std::unordered_map<uint32_t, NpcStateMsg> m_remoteNpcs;
+    std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> m_npcLastSeen;
 };
 
 }
