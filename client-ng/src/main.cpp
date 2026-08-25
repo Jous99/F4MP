@@ -193,7 +193,10 @@ namespace F4MP
         static const char* kBools[] = {
             "IsMoving", "bMoving", "IsSprinting", "bSprinting", "bIsSprinting", "IsSneaking",
             "IsRunning", "bIsMovementDriven", "bAnimationDriven", "IsNPC", "bWantToSprint",
-            "IsSynced", "bIsSynced", "GraphControlsMovement", "IsFirstPerson", "bAllowRotation"
+            "IsSynced", "bIsSynced", "GraphControlsMovement", "IsFirstPerson", "bAllowRotation",
+            // candidatos de SALTO / AIRE / AGACHARSE (para descubrir el nombre real):
+            "bInJumpState", "IsJumping", "bIsJumping", "IsInAir", "bInAir", "IsFalling",
+            "bIsSneaking", "IsSneaky", "IsCrouching", "bSneaking"
         };
         REX::INFO("[F4MP] ===== VOLCADO variables del grafo (existen) =====");
         for (auto* n : kFloats) {
@@ -329,9 +332,11 @@ namespace F4MP
             const bool wantSprint = st.sprinting? (st.smoothSpeed > 250.0f) : (st.smoothSpeed > 340.0f);
 
             actor->SetGraphVariableBool("IsSprinting", wantSprint);
+            // Agacharse: fijar la variable del grafo CADA frame (como Speed, no solo al
+            // cambiar) para que con bIsSynced el grafo entre y se mantenga en modo agachado.
+            actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             if (actor->IsSneaking() != rp.isSneaking) {
                 actor->SetSneaking(rp.isSneaking);
-                actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             }
 
             // Arma en mano: al cambiar, desenfundar/enfundar (cambia la postura del cuerpo).
@@ -355,10 +360,14 @@ namespace F4MP
                 }
             }
 
-            // Salto: al DESPEGAR (paso de suelo a aire) disparamos el evento de salto en el
-            // cuerpo. La altura ya la sigue el SetPosition (el cuerpo sube/baja con el jugador).
+            // Salto: fijar la variable del grafo cada frame + evento al despegar. (El nombre
+            // real del evento/variable de salto lo confirmamos con el volcado de diagnostico.)
+            actor->SetGraphVariableBool("bInJumpState", rp.isJumping);
             if (st.jumping != rp.isJumping) {
-                if (rp.isJumping) actor->NotifyAnimationGraphImpl("JumpUp");
+                if (rp.isJumping) {
+                    actor->NotifyAnimationGraphImpl("JumpUp");
+                    actor->NotifyAnimationGraphImpl("jumpUp");
+                }
                 st.jumping = rp.isJumping;
             }
 
