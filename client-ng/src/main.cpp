@@ -302,7 +302,7 @@ namespace F4MP
                 //          la deducimos del hueco a cubrir en este frame).
                 //   paso = cuanto avanzar este frame, sin pasarnos del objetivo.
                 float spd = (it->second.speed > 1.0f && it->second.speed < 1000.0f) ? it->second.speed : (dist / dt);
-                float paso = std::min(dist, spd * dt);
+                float paso = std::min<float>(dist, spd * dt);  // <float> evita la macro min de <windows.h>
                 RE::NiPoint3 dir{ delta.x / dist, delta.y / dist, delta.z / dist };
                 RE::NiPoint3 mov{ dir.x * paso, dir.y * paso, dir.z * paso };
                 actor->Move(dt, mov, false);
