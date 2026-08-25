@@ -246,9 +246,7 @@ namespace F4MP
         lastTick = ahora;
         if (dt <= 0.0f || dt > 0.5f) dt = 0.033f;  // clamp por si hubo pausa/carga
 
-        // Suavizado exponencial: alcanza el objetivo en ~tau segundos.
-        const float tau = 0.12f;
-        float alpha = 1.0f - std::exp(-dt / tau);
+        // (dt se usa abajo para mover el cuerpo a la velocidad correcta con Actor::Move.)
 
         // 0. Limpiar cuerpos de jugadores que ya no estan conectados.
         std::vector<uint32_t> muertos;
@@ -291,19 +289,25 @@ namespace F4MP
             const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
 
             if (dist > 1500.0f) {
-                // Salto grande (spawn inicial o fast travel): teletransportar.
+                // UNICO teletransporte: al aparecer (spawn) o en viaje rapido, cuando el
+                // cuerpo esta lejisimos. En el movimiento normal NO se teletransporta.
                 actor->SetPosition(objetivo, true);
-            } else {
-                // Seguimiento suave por interpolacion (estable y fiable). NOTA: esto
-                // NO hace que el cuerpo anime por si solo (el motor no lo ve "moverse");
-                // la animacion la intentamos aparte con las variables/eventos del grafo.
-                // Probamos primero Actor::Move pero peleaba con la IA del NPC y salia a
-                // tirones, asi que volvemos a este seguimiento fiable.
-                RE::NiPoint3 nueva{ actual.x + delta.x * alpha,
-                                    actual.y + delta.y * alpha,
-                                    actual.z + delta.z * alpha };
-                actor->SetPosition(nueva, true);
+            } else if (dist > 0.5f) {
+                // Movimiento REAL: en vez de reposicionar (que no anima), MOVEMOS el cuerpo
+                // por el motor con Actor::Move, y a la VELOCIDAD del jugador (pasos
+                // constantes), no cerrando el hueco de golpe (eso daba tirones). Al moverse
+                // de verdad y a ritmo constante, el sistema de movimiento del juego deberia
+                // animar las piernas por si solo.
+                //   spd  = velocidad objetivo (la que reporta el jugador; si no llega,
+                //          la deducimos del hueco a cubrir en este frame).
+                //   paso = cuanto avanzar este frame, sin pasarnos del objetivo.
+                float spd = (it->second.speed > 1.0f && it->second.speed < 1000.0f) ? it->second.speed : (dist / dt);
+                float paso = std::min(dist, spd * dt);
+                RE::NiPoint3 dir{ delta.x / dist, delta.y / dist, delta.z / dist };
+                RE::NiPoint3 mov{ dir.x * paso, dir.y * paso, dir.z * paso };
+                actor->Move(dt, mov, false);
             }
+            // (si dist <= 0.5 el cuerpo ya esta en su sitio: no lo tocamos, se queda quieto.)
 
             // Rotacion: mirar hacia donde MIRA el jugador.
             // Solo re-posamos (UpdateActor3DPosition) cuando el heading CAMBIA, para
