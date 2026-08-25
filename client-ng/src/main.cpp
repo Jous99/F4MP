@@ -390,11 +390,17 @@ namespace F4MP
             static std::chrono::steady_clock::time_point lastLog{};
             if (std::chrono::duration<float>(ahora - lastLog).count() > 1.0f) {
                 lastLog = ahora;
-                const RE::NiPoint3 bp = actor->GetPosition();
-                const float desyncH = std::sqrt((objetivo.x - bp.x) * (objetivo.x - bp.x) +
-                                                 (objetivo.y - bp.y) * (objetivo.y - bp.y));
-                REX::INFO("[F4MP] jugador {} speed={:.0f} mov={} | cuerpo=({:.0f},{:.0f}) objetivo=({:.0f},{:.0f}) desfase={:.0f}",
-                    pid, it->second.speed, it->second.isMoving, bp.x, bp.y, objetivo.x, objetivo.y, desyncH);
+                // DIAGNOSTICO: leer que Speed tiene el grafo AHORA (tras fijarla). Si sale
+                // ~0, el motor nos la esta pisando (no ve al cuerpo moverse) -> hay que
+                // moverlo de verdad. cc = si encontro el controlador fisico.
+                float gSpeed = -1.0f;
+                actor->GetGraphVariableImplFloat("Speed", gSpeed);
+                float gDir = -99.0f;
+                actor->GetGraphVariableImplFloat("Direction", gDir);
+                const bool hasCC = actor->currentProcess && actor->currentProcess->middleHigh &&
+                                   actor->currentProcess->middleHigh->charController.get();
+                REX::INFO("[F4MP] jug {} | recibida={:.0f} suave={:.0f} | GRAFO Speed={:.1f} Dir={:.2f} | cc={} sprint={}",
+                    pid, it->second.speed, st.smoothSpeed, gSpeed, gDir, hasCC, wantSprint);
             }
         }
 
