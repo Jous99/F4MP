@@ -175,8 +175,8 @@ namespace F4MP
     // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
     // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
     struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false;
-                           bool weaponDrawn = false; bool jumping = false; float smoothSpeed = 0.0f;
-                           float aimX = 0.0f; float aimY = 0.0f; };
+                           bool weaponDrawn = false; bool jumping = false; bool sneaking = false;
+                           float smoothSpeed = 0.0f; float aimX = 0.0f; float aimY = 0.0f; };
     static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
@@ -332,11 +332,15 @@ namespace F4MP
             const bool wantSprint = st.sprinting? (st.smoothSpeed > 250.0f) : (st.smoothSpeed > 340.0f);
 
             actor->SetGraphVariableBool("IsSprinting", wantSprint);
-            // Agacharse: fijar la variable del grafo CADA frame (como Speed, no solo al
-            // cambiar) para que con bIsSynced el grafo entre y se mantenga en modo agachado.
+            // Agacharse: variables cada frame + EVENTO en la transicion (la variable sola no
+            // basta; el grafo entra en modo agachado con el evento, como andar con moveStart).
             actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
-            if (actor->IsSneaking() != rp.isSneaking) {
+            actor->SetGraphVariableBool("bIsSneaking", rp.isSneaking);
+            if (st.sneaking != rp.isSneaking) {
+                bool ok = actor->NotifyAnimationGraphImpl(rp.isSneaking ? "SneakStart" : "SneakStop");
                 actor->SetSneaking(rp.isSneaking);
+                REX::INFO("[F4MP] sneak={} evento SneakStart/Stop -> {}", rp.isSneaking, ok);
+                st.sneaking = rp.isSneaking;
             }
 
             // Arma en mano: al cambiar, desenfundar/enfundar (cambia la postura del cuerpo).
@@ -360,13 +364,18 @@ namespace F4MP
                 }
             }
 
-            // Salto: fijar la variable del grafo cada frame + evento al despegar. (El nombre
-            // real del evento/variable de salto lo confirmamos con el volcado de diagnostico.)
+            // Salto: variable cada frame + evento al despegar. Probamos varios nombres de
+            // evento y registramos cual es valido (return true) para quedarnos con ese.
             actor->SetGraphVariableBool("bInJumpState", rp.isJumping);
+            actor->SetGraphVariableBool("IsJumping", rp.isJumping);
             if (st.jumping != rp.isJumping) {
                 if (rp.isJumping) {
-                    actor->NotifyAnimationGraphImpl("JumpUp");
-                    actor->NotifyAnimationGraphImpl("jumpUp");
+                    bool a = actor->NotifyAnimationGraphImpl("JumpUp");
+                    bool b = actor->NotifyAnimationGraphImpl("jumpStart");
+                    bool c = actor->NotifyAnimationGraphImpl("JumpStandingStart");
+                    bool d = actor->NotifyAnimationGraphImpl("JumpDirectionalStart");
+                    REX::INFO("[F4MP] jump eventos: JumpUp={} jumpStart={} JumpStandingStart={} JumpDirectionalStart={}",
+                        a, b, c, d);
                 }
                 st.jumping = rp.isJumping;
             }
