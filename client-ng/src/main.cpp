@@ -292,22 +292,29 @@ namespace F4MP
                 // UNICO teletransporte: al aparecer (spawn) o en viaje rapido, cuando el
                 // cuerpo esta lejisimos. En el movimiento normal NO se teletransporta.
                 actor->SetPosition(objetivo, true);
-            } else if (dist > 0.5f) {
-                // Movimiento REAL: en vez de reposicionar (que no anima), MOVEMOS el cuerpo
-                // por el motor con Actor::Move, y a la VELOCIDAD del jugador (pasos
-                // constantes), no cerrando el hueco de golpe (eso daba tirones). Al moverse
-                // de verdad y a ritmo constante, el sistema de movimiento del juego deberia
-                // animar las piernas por si solo.
-                //   spd  = velocidad objetivo (la que reporta el jugador; si no llega,
-                //          la deducimos del hueco a cubrir en este frame).
-                //   paso = cuanto avanzar este frame, sin pasarnos del objetivo.
-                float spd = (it->second.speed > 1.0f && it->second.speed < 1000.0f) ? it->second.speed : (dist / dt);
-                float paso = std::min<float>(dist, spd * dt);  // <float> evita la macro min de <windows.h>
-                RE::NiPoint3 dir{ delta.x / dist, delta.y / dist, delta.z / dist };
-                RE::NiPoint3 mov{ dir.x * paso, dir.y * paso, dir.z * paso };
-                actor->Move(dt, mov, false);
+            } else {
+                // Movimiento REAL, pero SOLO EN HORIZONTAL (X/Y). La altura (Z) la deja el
+                // motor por gravedad. Si tambien empujamos en vertical, el controlador
+                // fisico se pelea con el suelo (la Z del jugador y la del cuerpo no coinciden
+                // exacto) y acaba lanzando/hundiendo el cuerpo fuera del area -> el modelo se
+                // descarga y desaparece dejando solo el marcador. Por eso NO tocamos la Z.
+                //   spd  = velocidad del jugador (si no llega, la deducimos del hueco).
+                //   paso = cuanto avanzar este frame en horizontal, sin pasarnos.
+                const float dhx = delta.x, dhy = delta.y;
+                const float distH = std::sqrt(dhx * dhx + dhy * dhy);
+                if (distH > 0.5f) {
+                    float spd = (it->second.speed > 1.0f && it->second.speed < 1000.0f) ? it->second.speed : (distH / dt);
+                    float paso = std::min<float>(distH, spd * dt);  // <float> evita la macro min de <windows.h>
+                    RE::NiPoint3 mov{ dhx / distH * paso, dhy / distH * paso, 0.0f };
+                    actor->Move(dt, mov, false);
+                }
+                // Correccion de altura suave y solo si se desvia mucho (escaleras, caidas):
+                // recolocamos la Z sin tocar X/Y, para no desincronizar el piso.
+                if (std::fabs(delta.z) > 150.0f) {
+                    const RE::NiPoint3 p = actor->GetPosition();
+                    actor->SetPosition(RE::NiPoint3{ p.x, p.y, objetivo.z }, true);
+                }
             }
-            // (si dist <= 0.5 el cuerpo ya esta en su sitio: no lo tocamos, se queda quieto.)
 
             // Rotacion: mirar hacia donde MIRA el jugador.
             // Solo re-posamos (UpdateActor3DPosition) cuando el heading CAMBIA, para
