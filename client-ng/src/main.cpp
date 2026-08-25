@@ -365,6 +365,25 @@ namespace F4MP
                 }
             }
 
+            // 4) INYECTAR VELOCIDAD al controlador fisico para que el grafo SOSTENGA la
+            //    animacion. El grafo lee la velocidad del controlador para saber si anda/
+            //    corre; como el cuerpo se coloca con SetPosition (no se mueve solo), sin
+            //    esto la animacion arranca y se congela tras el primer paso. La velocidad
+            //    va en espacio de MUNDO (por eso ya no ira "siempre hacia delante" como con
+            //    Actor::Move) y en unidades de HAVOK (metros): convertimos desde unidades
+            //    de juego. Se inyecta DESPUES del SetPosition para que no la pise.
+            if (auto* proc = actor->currentProcess) {
+                if (auto* mid = proc->middleHigh) {
+                    if (auto* cc = mid->charController.get()) {
+                        constexpr float HAVOK = 0.0142875f;              // juego -> havok
+                        const float worldDir = rp.angleZ + rp.moveDir;   // direccion real en el mundo
+                        const float vh = st.smoothSpeed * HAVOK;
+                        RE::hkVector4f vel{ std::sin(worldDir) * vh, std::cos(worldDir) * vh, 0.0f, 0.0f };
+                        cc->SetLinearVelocityImpl(vel);
+                    }
+                }
+            }
+
             // Log throttled (1/s): mide el DESFASE cuerpo vs objetivo (para diagnosticar
             // la desincronizacion). Si 'desync' crece cuando el jugador se mueve, es que el
             // cuerpo no llega/se va; si el cuerpo va en direccion girada, se vera aqui.
