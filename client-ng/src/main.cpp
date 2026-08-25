@@ -173,7 +173,8 @@ namespace F4MP
     // Ultimo estado de movimiento aplicado a cada cuerpo. Sirve para disparar los
     // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
     // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
-    struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false; float smoothSpeed = 0.0f; };
+    struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false;
+                           float smoothSpeed = 0.0f; float velX = 0.0f; float velY = 0.0f; };
     static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
@@ -315,14 +316,23 @@ namespace F4MP
                 // por eso SI animaba). Solo corregimos si se desvia mucho.
                 RE::hkVector4f cur; cc->GetLinearVelocityImpl(cur);
                 RE::hkVector4f vel{ 0.0f, 0.0f, cur.z, 0.0f };  // Z: la lleva la gravedad del motor
-                if (distH > 2.0f) {
-                    // Velocidad: la del jugador, y al menos la necesaria para cerrar el hueco
-                    // (para no quedarse atras), con un limite.
-                    float v = std::max<float>(st.smoothSpeed, distH / 0.15f);
-                    v = std::min<float>(v, 800.0f) * HAVOK;
-                    vel.x = (delta.x / distH) * v;
-                    vel.y = (delta.y / distH) * v;
+
+                // Velocidad DESEADA hacia el objetivo: proporcional al hueco pero suave y
+                // limitada cerca del ritmo del jugador (sin acelerones bruscos).
+                float desX = 0.0f, desY = 0.0f;
+                if (distH > 1.0f) {
+                    float mag = distH / 0.30f;                             // cerrar el hueco, suave
+                    mag = std::min<float>(mag, st.smoothSpeed + 150.0f);   // no dispararse de golpe
+                    mag = std::min<float>(mag, 900.0f);
+                    desX = (delta.x / distH) * mag;
+                    desY = (delta.y / distH) * mag;
                 }
+                // LOW-PASS de la velocidad: esto es lo que quita los TROMPICONES. Los saltos
+                // de posicion (30/seg) hacian pegar acelerones; el filtro los alisa.
+                st.velX = st.velX * 0.75f + desX * 0.25f;
+                st.velY = st.velY * 0.75f + desY * 0.25f;
+                vel.x = st.velX * HAVOK;
+                vel.y = st.velY * HAVOK;
                 cc->SetLinearVelocityImpl(vel);
 
                 // Correccion de deriva si se aleja mucho (hipo de red / choque).
