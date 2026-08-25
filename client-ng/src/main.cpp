@@ -173,7 +173,7 @@ namespace F4MP
     // Ultimo estado de movimiento aplicado a cada cuerpo. Sirve para disparar los
     // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
     // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
-    struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false; };
+    struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false; float smoothSpeed = 0.0f; };
     static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
@@ -313,45 +313,49 @@ namespace F4MP
             // de cada frame, sin machacar la animacion.
             actor->SetHeading(it->second.angleZ);
 
-            // --- Animaciones: variables REALES del grafo (del volcado), por nivel ---
+            // --- Animaciones ---
             const auto& rp = it->second;
-            // Clamp de velocidad por si llega basura (sender en version vieja, etc.).
-            float animSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
-            g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", animSpeed);
+            BodyAnimState& st = g_animState[pid];
+
+            // 1) SUAVIZAR la velocidad. La que llega esta calculada frame a frame en el
+            //    emisor y salta muchisimo: cruzaba los umbrales de andar/sprint arriba y
+            //    abajo constantemente, disparando eventos sin parar -> la animacion se
+            //    reiniciaba todo el rato. Filtro paso-bajo para estabilizarla.
+            float rawSpeed = (rp.speed > 0.0f && rp.speed < 1000.0f) ? rp.speed : 0.0f;
+            st.smoothSpeed = st.smoothSpeed * 0.85f + rawSpeed * 0.15f;
+
+            g_lastOkSpeed = actor->SetGraphVariableFloat("Speed", st.smoothSpeed);
             g_lastOkDir   = actor->SetGraphVariableFloat("Direction", rp.moveDir);
-            actor->SetGraphVariableBool("IsSprinting", rp.isSprinting);
+
+            // 2) Estado con HISTERESIS: umbral distinto para ARRANCAR y para PARAR, para que
+            //    no vibre en el limite. Se calcula sobre la velocidad ya suavizada.
+            const bool wantMoving   = st.moving   ? (st.smoothSpeed >  8.0f) : (st.smoothSpeed >  30.0f);
+            const bool wantSprint   = st.sprinting? (st.smoothSpeed > 250.0f): (st.smoothSpeed > 340.0f);
+
+            actor->SetGraphVariableBool("IsSprinting", wantSprint);
             // Agachado: fijar el ESTADO real del actor (no solo la variable del grafo).
             if (actor->IsSneaking() != rp.isSneaking) {
                 actor->SetSneaking(rp.isSneaking);
                 actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             }
 
-            // --- Animaciones por EVENTOS del grafo: disparar SOLO en los cambios ---
-            // Las variables de arriba (Speed/Direction) afinan la mezcla, pero por si
-            // solas casi nunca sacan al cuerpo del idle (el actor esta teletransportado,
-            // para el motor "no se mueve"). Los eventos NotifyAnimationGraph fuerzan la
-            // TRANSICION de estado: idle <-> andar <-> sprint. Los disparamos solo cuando
-            // el estado cambia; mandarlos cada tick reiniciaria la animacion sin parar.
-            // (El agacharse ya se gestiona arriba con SetSneaking.)
-            BodyAnimState& st = g_animState[pid];
+            // 3) EVENTOS del grafo: SOLO cuando el estado (ya estable) cambia de verdad.
             if (!st.init) {
-                // Primer tick de este cuerpo: sincronizar el estado sin disparar
-                // transiciones falsas (aun no sabemos el estado "anterior").
-                st.moving = rp.isMoving;
-                st.sprinting = rp.isSprinting;
+                st.moving = wantMoving;
+                st.sprinting = wantSprint;
                 st.init = true;
             } else {
-                if (rp.isMoving != st.moving) {
-                    const char* ev = rp.isMoving ? "moveStart" : "moveStop";
-                    bool ok = actor->NotifyAnimationGraphImpl(ev);
-                    REX::INFO("[F4MP] anim jugador {}: evento '{}' -> {}", pid, ev, ok);
-                    st.moving = rp.isMoving;
+                if (wantMoving != st.moving) {
+                    const char* ev = wantMoving ? "moveStart" : "moveStop";
+                    actor->NotifyAnimationGraphImpl(ev);
+                    REX::INFO("[F4MP] anim jugador {}: evento '{}' (speed suavizada {:.0f})", pid, ev, st.smoothSpeed);
+                    st.moving = wantMoving;
                 }
-                if (rp.isSprinting != st.sprinting) {
-                    const char* ev = rp.isSprinting ? "SprintStart" : "SprintStop";
-                    bool ok = actor->NotifyAnimationGraphImpl(ev);
-                    REX::INFO("[F4MP] anim jugador {}: evento '{}' -> {}", pid, ev, ok);
-                    st.sprinting = rp.isSprinting;
+                if (wantSprint != st.sprinting) {
+                    const char* ev = wantSprint ? "SprintStart" : "SprintStop";
+                    actor->NotifyAnimationGraphImpl(ev);
+                    REX::INFO("[F4MP] anim jugador {}: evento '{}' (speed suavizada {:.0f})", pid, ev, st.smoothSpeed);
+                    st.sprinting = wantSprint;
                 }
             }
 
