@@ -336,10 +336,13 @@ namespace F4MP
             // basta; el grafo entra en modo agachado con el evento, como andar con moveStart).
             actor->SetGraphVariableBool("IsSneaking", rp.isSneaking);
             actor->SetGraphVariableBool("bIsSneaking", rp.isSneaking);
-            if (st.sneaking != rp.isSneaking) {
-                bool ok = actor->NotifyAnimationGraphImpl(rp.isSneaking ? "SneakStart" : "SneakStop");
+            // Re-afirmar el ESTADO agachado CADA frame: si solo se pone al cambiar, el cuerpo
+            // se vuelve a levantar solo. Asi se mantiene agachado mientras el jugador lo este.
+            if (actor->IsSneaking() != rp.isSneaking) {
                 actor->SetSneaking(rp.isSneaking);
-                REX::INFO("[F4MP] sneak={} evento SneakStart/Stop -> {}", rp.isSneaking, ok);
+            }
+            if (st.sneaking != rp.isSneaking) {
+                actor->NotifyAnimationGraphImpl(rp.isSneaking ? "SneakStart" : "SneakStop");
                 st.sneaking = rp.isSneaking;
             }
 
