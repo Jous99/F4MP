@@ -81,7 +81,7 @@ namespace F4MP
                     s_sentAppearance = true;
                 }
 
-                if (duration_cast<milliseconds>(now - lastSend).count() >= 33) {  // 30/s
+                if (duration_cast<milliseconds>(now - lastSend).count() >= 16) {  // 60/s (tick del servidor)
                     static RE::NiPoint3 s_lastPos{};
                     static bool s_havePos = false;
                     static auto s_lastPosTime = now;
@@ -174,7 +174,7 @@ namespace F4MP
     // eventos del grafo (moveStart/moveStop, SprintStart/SprintStop) SOLO cuando el
     // estado cambia, en vez de cada tick (si no, el grafo no avanzaria nunca).
     struct BodyAnimState { bool moving = false; bool sprinting = false; bool init = false;
-                           float smoothSpeed = 0.0f; float velX = 0.0f; float velY = 0.0f; };
+                           float smoothSpeed = 0.0f; float aimX = 0.0f; float aimY = 0.0f; };
     static std::unordered_map<uint32_t, BodyAnimState> g_animState;
     static bool g_lastOkSpeed = false, g_lastOkDir = false;       // retorno de SetGraphVariable (debug)
     static bool g_graphDumped = false;                            // ya volcamos las variables del grafo?
@@ -314,29 +314,30 @@ namespace F4MP
                 // cada frame (eso peleaba con la velocidad y, yendo de frente, se anulaban
                 // -> el grafo veia velocidad 0 y se congelaba; de espaldas no se anulaba y
                 // por eso SI animaba). Solo corregimos si se desvia mucho.
+                // OBJETIVO SUAVIZADO: interpolamos un punto "aim" que persigue la posicion
+                // de red. Asi el movimiento es fluido (como el SetPosition de antes) aunque
+                // los paquetes lleguen a saltos, y al movernos DE VERDAD hacia el, el grafo
+                // anima. Esto quita los trompicones de raiz sin amortiguar la velocidad.
+                if (!st.init) { st.aimX = actual.x; st.aimY = actual.y; }
+                st.aimX += (objetivo.x - st.aimX) * 0.25f;
+                st.aimY += (objetivo.y - st.aimY) * 0.25f;
+
+                const float ax = st.aimX - actual.x, ay = st.aimY - actual.y;
+                const float ad = std::sqrt(ax * ax + ay * ay);
                 RE::hkVector4f cur; cc->GetLinearVelocityImpl(cur);
                 RE::hkVector4f vel{ 0.0f, 0.0f, cur.z, 0.0f };  // Z: la lleva la gravedad del motor
-
-                // Velocidad DESEADA hacia el objetivo: proporcional al hueco pero suave y
-                // limitada cerca del ritmo del jugador (sin acelerones bruscos).
-                float desX = 0.0f, desY = 0.0f;
-                if (distH > 1.0f) {
-                    float mag = distH / 0.30f;                             // cerrar el hueco, suave
-                    mag = std::min<float>(mag, st.smoothSpeed + 150.0f);   // no dispararse de golpe
-                    mag = std::min<float>(mag, 900.0f);
-                    desX = (delta.x / distH) * mag;
-                    desY = (delta.y / distH) * mag;
+                if (ad > 1.0f) {
+                    // Velocidad para alcanzar el aim (que ya es suave) en ~0.1 s. Limitada.
+                    float mag = std::min<float>(ad / 0.10f, 900.0f) * HAVOK;
+                    vel.x = (ax / ad) * mag;
+                    vel.y = (ay / ad) * mag;
                 }
-                // LOW-PASS de la velocidad: esto es lo que quita los TROMPICONES. Los saltos
-                // de posicion (30/seg) hacian pegar acelerones; el filtro los alisa.
-                st.velX = st.velX * 0.75f + desX * 0.25f;
-                st.velY = st.velY * 0.75f + desY * 0.25f;
-                vel.x = st.velX * HAVOK;
-                vel.y = st.velY * HAVOK;
                 cc->SetLinearVelocityImpl(vel);
 
-                // Correccion de deriva si se aleja mucho (hipo de red / choque).
-                if (distH > 300.0f) {
+                // Correccion de deriva: si el cuerpo se separa del marcador mas de esto,
+                // lo recolocamos (evita que "acabe en otro lado"). Con la interpolacion de
+                // arriba deberia pasar poco.
+                if (distH > 120.0f) {
                     actor->SetPosition(objetivo, true);
                 }
                 // Correccion de altura (escaleras / caidas): recolocar solo la Z.
