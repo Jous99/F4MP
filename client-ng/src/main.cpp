@@ -26,6 +26,11 @@ namespace F4MP
     // los NPCs locales (por FormID) al estado que manda el host. (Toggle desde el menu.)
     static bool g_isHost = false;
 
+    // Host dedicado INVISIBLE: si esta activo, NO envio mi propia posicion, asi que a los
+    // demas no se les spawnea un cuerpo para mi (mi Fallout solo hace de "mundo" que
+    // difunde NPCs). Mi personaje sigue existiendo en mi juego para cargar la zona.
+    static bool g_hideSelf = false;
+
     static void BodiesSync();       // declaracion adelantada (se define mas abajo)
     static void BroadcastNpcs();    // host: difundir NPCs cercanos
     static void NpcsSync();         // cliente: conducir NPCs locales por FormID
@@ -87,7 +92,8 @@ namespace F4MP
                     s_sentAppearance = true;
                 }
 
-                if (duration_cast<milliseconds>(now - lastSend).count() >= 16) {  // 60/s (tick del servidor)
+                // Si soy host dedicado invisible, no envio mi jugador (no aparezco).
+                if (!g_hideSelf && duration_cast<milliseconds>(now - lastSend).count() >= 16) {  // 60/s
                     static RE::NiPoint3 s_lastPos{};
                     static bool s_havePos = false;
                     static auto s_lastPosTime = now;
@@ -607,6 +613,11 @@ namespace F4MP
             }
             if (!g_isHost) {
                 ImGuiMCP::Text("NPCs conducidos: %d", (int)net.GetRemoteNpcs().size());
+            }
+            // Host dedicado invisible: no enviar mi jugador (no aparezco ante los demas).
+            ImGuiMCP::Text("Visibilidad: %s", g_hideSelf ? "OCULTO (host dedicado)" : "visible");
+            if (ImGuiMCP::Button(g_hideSelf ? "Aparecer (jugador normal)" : "No aparecer (host dedicado)")) {
+                g_hideSelf = !g_hideSelf;
             }
         } else {
             ImGuiMCP::Text("Estado: desconectado");
