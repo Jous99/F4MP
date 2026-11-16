@@ -477,20 +477,44 @@ namespace F4MP
         RE::NiPoint3 vel{};         // velocidad estimada (unidades/segundo) entre los 2 ultimos paquetes
         std::chrono::steady_clock::time_point netTime{};  // cuando llego esa posicion
         bool havePos = false;       // ya tenemos al menos una posicion?
+        // --- animacion (igual que BodyAnimState de los cuerpos de jugador) ---
+        float smoothSpeed = 0.0f;   // velocidad suavizada que le damos al grafo
+        bool moving = false;        // ultimo estado enviado al grafo (para disparar eventos solo al cambiar)
+        bool sprinting = false;
+        bool sneaking = false;
+        bool animInit = false;      // ya hemos fijado el estado inicial?
     };
     static std::unordered_map<uint32_t, NpcDriveState> g_drivenNpcs;
+
+    // HOST: para calcular la velocidad de cada NPC necesitamos recordar donde estaba en el
+    // envio anterior (velocidad = distancia recorrida / tiempo transcurrido). Clave = FormID.
+    struct NpcSendState {
+        RE::NiPoint3 lastPos{};
+        std::chrono::steady_clock::time_point lastTime{};
+    };
+    static std::unordered_map<uint32_t, NpcSendState> g_npcSendState;
+
+    // CLIENTE: deja de conducir la animacion de un NPC. Si no quitamos bIsSynced, su grafo
+    // seguiria "obedeciendo" la ultima Speed que le pusimos aunque ya no lo controlemos.
+    static void ReleaseNpcAnim(uint32_t fid)
+    {
+        auto* form = RE::TESForm::GetFormByID(fid);
+        auto* actor = form ? form->As<RE::Actor>() : nullptr;
+        if (actor) actor->SetGraphVariableBool("bIsSynced", false);
+    }
 
     // HOST: difunde el estado de los NPCs "fijos" cercanos, identificados por FormID.
     static void BroadcastNpcs()
     {
         auto& net = Network::NetworkClient::GetInstance();
-        if (!net.IsConnected() || !g_isHost) return;
+        if (!net.IsConnected() || !g_isHost) { g_npcSendState.clear(); return; }
         auto* pl = RE::PlayerCharacter::GetSingleton();
         if (!pl) return;
         auto* cell = pl->GetParentCell();
         if (!cell) return;
         const RE::NiPoint3 myPos = pl->GetPosition();
         const auto claimed = ClaimedFormIds();   // cuerpos de jugador: NO son NPCs
+        const auto ahora = std::chrono::steady_clock::now();
 
         int count = 0;
         cell->ForEachReferenceInRange(myPos, 4000.0f, [&](RE::TESObjectREFR* ref) {
@@ -511,28 +535,60 @@ namespace F4MP
             const auto p = actor->GetPosition();
             msg.x = p.x; msg.y = p.y; msg.z = p.z;
             msg.angleZ = actor->GetHeading();
-            msg.speed = 0.0f;                          // animacion: mas adelante
-            msg.isMoving = false;
+
+            // Velocidad REAL del NPC, medida igual que la del jugador: cuanto se ha
+            // desplazado en horizontal desde el envio anterior, dividido por el tiempo.
+            // (Solo horizontal: subir/bajar una cuesta no debe cambiar la animacion.)
+            float speed = 0.0f;
+            auto prev = g_npcSendState.find(fid);
+            if (prev != g_npcSendState.end()) {
+                const float dt = std::chrono::duration<float>(ahora - prev->second.lastTime).count();
+                if (dt > 0.001f && dt < 1.0f) {        // dt absurdo = primer envio o tiron: velocidad 0
+                    const float dx = p.x - prev->second.lastPos.x;
+                    const float dy = p.y - prev->second.lastPos.y;
+                    speed = std::sqrt(dx * dx + dy * dy) / dt;
+                }
+            }
+            g_npcSendState[fid] = NpcSendState{ p, ahora };
+
+            msg.speed = speed;
+            msg.isMoving = speed > 10.0f;
             msg.isSneaking = actor->IsSneaking();
             msg.isDead = false;                        // muerte: mas adelante
             net.SendPacket(Network::MessageType::NpcState, &msg, sizeof(msg));
             count++;
             return RE::BSContainer::ForEachResult::kContinue;
         });
+
+        // Olvidar NPCs que llevan >2 s sin difundirse (se alejaron), para que el mapa no
+        // crezca sin limite mientras el host recorre el mundo.
+        for (auto it = g_npcSendState.begin(); it != g_npcSendState.end();) {
+            if (std::chrono::duration<float>(ahora - it->second.lastTime).count() > 2.0f)
+                it = g_npcSendState.erase(it);
+            else ++it;
+        }
     }
 
     // CLIENTE: conduce los NPCs locales (buscados por FormID) al estado que manda el host.
     static void NpcsSync()
     {
         auto& net = Network::NetworkClient::GetInstance();
-        if (!net.IsConnected() || g_isHost) { g_drivenNpcs.clear(); return; }
+        if (!net.IsConnected() || g_isHost) {
+            // Dejo de ser cliente (desconectado o ahora soy host): soltar todos los NPCs.
+            for (auto& tomado : g_drivenNpcs) ReleaseNpcAnim(tomado.first);
+            g_drivenNpcs.clear();
+            return;
+        }
 
         auto npcs = net.GetRemoteNpcs();
         const auto ahora = std::chrono::steady_clock::now();
 
         // Soltar los NPCs que el host ya no difunde (se alejaron): dejan de estar tomados.
         for (auto it = g_drivenNpcs.begin(); it != g_drivenNpcs.end();) {
-            if (npcs.find(it->first) == npcs.end()) it = g_drivenNpcs.erase(it);
+            if (npcs.find(it->first) == npcs.end()) {
+                ReleaseNpcAnim(it->first);
+                it = g_drivenNpcs.erase(it);
+            }
             else ++it;
         }
 
@@ -597,6 +653,68 @@ namespace F4MP
                                                  actual.z + delta.z * alpha }, true);
             }
             actor->SetHeading(s.angleZ);
+
+            // ---- ANIMACION (el mismo truco que los cuerpos de jugador) ----
+            // Movemos al NPC con SetPosition, asi que para el motor "no se mueve" y su
+            // grafo de animacion pondria Speed a 0 (se deslizaria tieso). Con bIsSynced
+            // CADA tick el grafo respeta la Speed que le fijamos nosotros.
+            const float rawSpeed = (s.speed > 0.0f && s.speed < 1000.0f) ? s.speed : 0.0f;
+            // Suavizado: la velocidad medida en el host salta de un envio a otro. Mezclamos
+            // 85% del valor anterior + 15% del nuevo para que no vibre.
+            st.smoothSpeed = st.smoothSpeed * 0.85f + rawSpeed * 0.15f;
+
+            actor->SetGraphVariableBool("bIsSynced", true);
+            actor->SetGraphVariableFloat("Speed", st.smoothSpeed);
+            // Direction = hacia donde se mueve respecto a donde mira. 0 = hacia delante.
+            // Los NPCs casi siempre andan de frente, y asi no hay que tocar el struct de red.
+            actor->SetGraphVariableFloat("Direction", 0.0f);
+
+            // HISTERESIS: umbral distinto para arrancar y para parar. Con un unico umbral,
+            // una velocidad que ronde ese valor dispararia moveStart/moveStop sin parar.
+            const bool wantMoving = st.moving    ? (st.smoothSpeed >   8.0f) : (st.smoothSpeed >  30.0f);
+            const bool wantSprint = st.sprinting ? (st.smoothSpeed > 250.0f) : (st.smoothSpeed > 340.0f);
+            actor->SetGraphVariableBool("IsSprinting", wantSprint);
+
+            // Sigilo: variable cada tick + estado re-afirmado + evento solo al cambiar.
+            actor->SetGraphVariableBool("IsSneaking", s.isSneaking);
+            actor->SetGraphVariableBool("bIsSneaking", s.isSneaking);
+            if (actor->IsSneaking() != s.isSneaking) actor->SetSneaking(s.isSneaking);
+
+            if (!st.animInit) {
+                // Primer tick: solo anotamos el estado, sin eventos. El NPC ya esta en la
+                // pose que le dejo su propia IA; no queremos mandarle un evento de mas.
+                st.moving = wantMoving;
+                st.sprinting = wantSprint;
+                st.sneaking = s.isSneaking;
+                st.animInit = true;
+            } else {
+                // Los eventos se mandan SOLO en la transicion (si se mandaran cada tick,
+                // la animacion se reiniciaria continuamente y no avanzaria).
+                if (wantMoving != st.moving) {
+                    actor->NotifyAnimationGraphImpl(wantMoving ? "moveStart" : "moveStop");
+                    st.moving = wantMoving;
+                }
+                if (wantSprint != st.sprinting) {
+                    actor->NotifyAnimationGraphImpl(wantSprint ? "SprintStart" : "SprintStop");
+                    st.sprinting = wantSprint;
+                }
+                if (s.isSneaking != st.sneaking) {
+                    actor->NotifyAnimationGraphImpl(s.isSneaking ? "SneakStart" : "SneakStop");
+                    st.sneaking = s.isSneaking;
+                }
+            }
+
+            // Diagnostico (cada 2 s, UN solo NPC que se este moviendo): compara la Speed que
+            // manda el host con la que tiene de verdad el grafo. Si "grafo" sale ~0 mientras
+            // "host" es alta, el motor nos la esta pisando y la animacion no arrancara.
+            static std::chrono::steady_clock::time_point lastLog{};
+            if (rawSpeed > 30.0f && std::chrono::duration<float>(ahora - lastLog).count() > 2.0f) {
+                lastLog = ahora;
+                float gSpeed = -1.0f;
+                const bool tieneSpeed = actor->GetGraphVariableImplFloat("Speed", gSpeed);
+                REX::INFO("[F4MP] NPC {:#x} | host={:.0f} suave={:.0f} grafo={:.1f} (existe={}) | moving={} | conducidos={}",
+                    fid, rawSpeed, st.smoothSpeed, gSpeed, tieneSpeed, st.moving, g_drivenNpcs.size());
+            }
         }
     }
 
