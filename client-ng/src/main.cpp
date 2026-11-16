@@ -142,17 +142,21 @@ namespace F4MP
                     F4SE::GetTaskInterface()->AddTask([]() { BodiesSync(); });
                 }
 
-                // NPCs (host autoritativo): si soy host, difundo los NPCs cercanos ~10/s;
-                // si no, conduzco mis NPCs locales al estado recibido ~30/s.
+                // NPCs (host autoritativo): si soy host, difundo los NPCs cercanos ~20/s;
+                // si no, conduzco mis NPCs locales al estado recibido ~60/s.
+                // Por que estos numeros: con 10 envios/s el NPC llegaba a su objetivo y se
+                // quedaba parado esperando el siguiente paquete (se veia "a saltitos").
+                // 20/s da el doble de muestras, y conducir a 60/s (como los cuerpos de
+                // jugador) reparte el movimiento en pasos mas pequenos.
                 static auto lastNpcSend = now;
                 static auto lastNpcSync = now;
                 if (g_isHost) {
-                    if (duration_cast<milliseconds>(now - lastNpcSend).count() >= 100) {
+                    if (duration_cast<milliseconds>(now - lastNpcSend).count() >= 50) {
                         lastNpcSend = now;
                         F4SE::GetTaskInterface()->AddTask([]() { BroadcastNpcs(); });
                     }
                 } else {
-                    if (duration_cast<milliseconds>(now - lastNpcSync).count() >= 33) {
+                    if (duration_cast<milliseconds>(now - lastNpcSync).count() >= 16) {
                         lastNpcSync = now;
                         F4SE::GetTaskInterface()->AddTask([]() { NpcsSync(); });
                     }
@@ -465,8 +469,16 @@ namespace F4MP
     }
 
     // ================= NPCs (host autoritativo) =================
-    // FormIDs de NPCs que este cliente ha "tomado" (les apagamos la IA para conducirlos).
-    static std::unordered_set<uint32_t> g_drivenNpcs;
+    // NPCs que este cliente ha "tomado" (les apagamos la IA para conducirlos), con lo que
+    // necesitamos recordar de cada uno entre tick y tick. Clave = FormID.
+    struct NpcDriveState {
+        // --- movimiento ---
+        RE::NiPoint3 netPos{};      // ultima posicion que mando el host
+        RE::NiPoint3 vel{};         // velocidad estimada (unidades/segundo) entre los 2 ultimos paquetes
+        std::chrono::steady_clock::time_point netTime{};  // cuando llego esa posicion
+        bool havePos = false;       // ya tenemos al menos una posicion?
+    };
+    static std::unordered_map<uint32_t, NpcDriveState> g_drivenNpcs;
 
     // HOST: difunde el estado de los NPCs "fijos" cercanos, identificados por FormID.
     static void BroadcastNpcs()
@@ -516,10 +528,11 @@ namespace F4MP
         if (!net.IsConnected() || g_isHost) { g_drivenNpcs.clear(); return; }
 
         auto npcs = net.GetRemoteNpcs();
+        const auto ahora = std::chrono::steady_clock::now();
 
         // Soltar los NPCs que el host ya no difunde (se alejaron): dejan de estar tomados.
         for (auto it = g_drivenNpcs.begin(); it != g_drivenNpcs.end();) {
-            if (npcs.find(*it) == npcs.end()) it = g_drivenNpcs.erase(it);
+            if (npcs.find(it->first) == npcs.end()) it = g_drivenNpcs.erase(it);
             else ++it;
         }
 
@@ -532,12 +545,46 @@ namespace F4MP
             if (g_drivenNpcs.find(fid) == g_drivenNpcs.end()) {
                 actor->InitiateDoNothingPackage();
                 actor->StopCombat();
-                g_drivenNpcs.insert(fid);
                 REX::INFO("[F4MP] NPC {:#x} tomado (conducido por el host)", fid);
             }
+            NpcDriveState& st = g_drivenNpcs[fid];     // lo crea si no existia
+
+            // ---- PREDICCION entre paquetes ----
+            // El host manda ~20 posiciones/s pero nosotros dibujamos ~60 veces/s. Si solo
+            // persiguieramos la ultima posicion recibida, el NPC llegaria y se pararia a
+            // esperar el siguiente paquete (movimiento a tirones). Solucion: estimar su
+            // velocidad comparando los dos ultimos paquetes y, mientras no llega el
+            // siguiente, suponer que sigue moviendose igual.
+            const RE::NiPoint3 recibida{ s.x, s.y, s.z };
+            if (!st.havePos) {
+                st.netPos = recibida;
+                st.netTime = ahora;
+                st.havePos = true;
+            } else if (recibida.x != st.netPos.x || recibida.y != st.netPos.y || recibida.z != st.netPos.z) {
+                // Posicion distinta = ha llegado un paquete nuevo y el NPC se ha movido.
+                const float dtPaquete = std::chrono::duration<float>(ahora - st.netTime).count();
+                if (dtPaquete > 0.005f && dtPaquete < 0.5f) {
+                    st.vel = RE::NiPoint3{ (recibida.x - st.netPos.x) / dtPaquete,
+                                           (recibida.y - st.netPos.y) / dtPaquete,
+                                           (recibida.z - st.netPos.z) / dtPaquete };
+                } else {
+                    st.vel = RE::NiPoint3{};           // hueco raro (lag/teletransporte): no predecir
+                }
+                st.netPos = recibida;
+                st.netTime = ahora;
+            }
+            // Tiempo desde el ultimo paquete "con movimiento". Si pasa de ~2 intervalos de
+            // envio sin cambios, es que el NPC se ha parado: dejamos de predecir.
+            const float desdePaquete = std::chrono::duration<float>(ahora - st.netTime).count();
+            if (desdePaquete > 0.12f) st.vel = RE::NiPoint3{};
+            // Predecimos como mucho 60 ms hacia delante: si el NPC frena de golpe, lo que
+            // nos pasamos de largo es minimo (unas pocas unidades).
+            const float adelanto = std::min<float>(desdePaquete, 0.06f);
 
             // Conducir posicion (interpolada suave) + heading, como los cuerpos de jugador.
-            const RE::NiPoint3 objetivo{ s.x, s.y, s.z };
+            const RE::NiPoint3 objetivo{ recibida.x + st.vel.x * adelanto,
+                                         recibida.y + st.vel.y * adelanto,
+                                         recibida.z + st.vel.z * adelanto };
             const RE::NiPoint3 actual = actor->GetPosition();
             const RE::NiPoint3 delta = objetivo - actual;
             const float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
